@@ -44,7 +44,7 @@ protected:
 	Partition result;
 
 private:
-
+	void fiducciaMatheyses(const Graph& G, Partition& input);
 
 };
 

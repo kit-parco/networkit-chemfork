@@ -9,7 +9,7 @@
 
 namespace NetworKit {
 
-LocalMaxMatcher::LocalMaxMatcher(Graph& graph): Matcher(graph)
+LocalMaxMatcher::LocalMaxMatcher(const Graph& graph): Matcher(graph)
 {
 
 }
