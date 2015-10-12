@@ -16,7 +16,8 @@ Partitioner::Partitioner(const Graph& G) : Algorithm(), G(G), result(0) {
 
 void Partitioner::run() {
 	const int numParts = 10;
-	std::function<Partition(Graph&)> partitionLambda = [&](Graph& g) -> Partition {
+
+	std::function<Partition(const Graph&)> partitionLambda = [&](const Graph& g) -> Partition {
 	   count n = g.numberOfNodes();
 
 	   // coarsen recursively until graph is small enough
@@ -43,15 +44,20 @@ void Partitioner::run() {
 		   ClusteringProjector projector;
 		   Partition finePart = projector.projectBack(coarseG, g, fineToCoarse, coarsePart);
 
+		   fiducciaMatheyses(g, finePart);
+
 		   // TODO: local refinement with BRKGA
 
 		   return finePart;
 	   }
    };
+	result = partitionLambda(G);
+	hasRun = true;
 }
-/**
-DiscreteIndividual runMultilevelPartitioning =
-   */
+
+void Partitioner::fiducciaMatheyses(const Graph& g, Partition& input) {
+
+}
 
 Partition Partitioner::getPartition() {
 	if(!hasRun) {
