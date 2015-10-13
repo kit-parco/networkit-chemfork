@@ -51,9 +51,11 @@ void Partitioner::run() {
 		   ClusteringProjector projector;
 		   Partition finePart = projector.projectBack(coarseG, g, fineToCoarse, coarsePart);
 
-		   fiducciaMatheyses(g, finePart);
-
-		   // TODO: local refinement with BRKGA
+		   // local refinement with Fiduccia-Matheyses
+		   edgeweight gain;
+		   do {
+			    gain = fiducciaMatheysesStep(g, finePart);
+		   } while (gain > 0);
 
 		   return finePart;
 	   }
@@ -62,7 +64,7 @@ void Partitioner::run() {
 	hasRun = true;
 }
 
-void Partitioner::fiducciaMatheyses(const Graph& g, Partition&  part) {
+edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) {
 	/**
 	 * necessary data structures:
 	 * - integer priority queue for each partition
@@ -81,7 +83,7 @@ void Partitioner::fiducciaMatheyses(const Graph& g, Partition&  part) {
 	edgeweight total = g.totalEdgeWeight();
 
 	/**
-	 * fill priority queues for the first time
+	 * fill priority queues
 	 */
 	for (index ID : part.getSubsetIds()) {
 		for (index j : part.getMembers(ID)) {
@@ -100,8 +102,9 @@ void Partitioner::fiducciaMatheyses(const Graph& g, Partition&  part) {
 	}
 
 	/**
-	 * do one step
+	 * iterate over all vertices,
 	 */
+	edgeweight gainsum = 0;
 	bool allQueuesEmpty = false;
 	while (!allQueuesEmpty) {
 		allQueuesEmpty = true;
@@ -126,7 +129,8 @@ void Partitioner::fiducciaMatheyses(const Graph& g, Partition&  part) {
 			part.moveToSubset(IdAtMax, topVertex);
 
 			//update history
-			gains.push_back(maxGain);
+			gainsum += maxGain;
+			gains.push_back(gainsum);
 			transfers.emplace_back(partID, IdAtMax);
 			transferedVertices.push_back(topVertex);
 
@@ -149,6 +153,25 @@ void Partitioner::fiducciaMatheyses(const Graph& g, Partition&  part) {
 			allQueuesEmpty = allQueuesEmpty && queues[partID].size() == 0;
 		}
 	}
+
+	assert(gains.size() == n);
+
+	/**
+	 * now find best partition among those tested
+	 */
+	int maxIndex = 0;
+	for (index i = 0; i < n; i++) {
+		if (gains[i] > gains[maxIndex]) maxIndex = i;
+	}
+
+	/**
+	 * apply partition modifications in reverse until best is recovered
+	 */
+	for (int i = n-1; i > maxIndex; i--) {
+		assert(part[transferedVertices[i]] == transfers[i].second);
+		part.moveToSubset(transferedVertices[i], transfers[i].first);
+	}
+	return gains[maxIndex];
 }
 
 edgeweight Partitioner::calculateGain(const Graph& g, const Partition& input, index v, index targetPart) {
