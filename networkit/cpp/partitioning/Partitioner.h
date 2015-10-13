@@ -40,11 +40,11 @@ public:
 	virtual std::string toString() const;
 
 protected:
+	void fiducciaMatheyses(const Graph& G, Partition& input);
+	static edgeweight calculateGain(const Graph& g, const Partition& input, index v, index targetPart);
+
 	const Graph& G;
 	Partition result;
-
-private:
-	void fiducciaMatheyses(const Graph& G, Partition& input);
 
 };
 
