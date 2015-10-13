@@ -6,16 +6,17 @@
  */
 
 #include <tuple>
+#include <queue>
 
 #include "Partitioner.h"
 #include "../auxiliary/PrioQueue.h"
 
-using std::pair;
 using std::vector;
+using std::pair;
+using std::queue;
 using Aux::PrioQueue;
 
 namespace NetworKit {
-namespace GraphTools {
 
 Partitioner::Partitioner(const Graph& G) : Algorithm(), G(G), result(0) {
 
@@ -189,6 +190,59 @@ std::string Partitioner::toString() const {
 	return "TODO";
 }
 
+Partition Partitioner::recursiveBisection(const Graph& g) {
 
-} /* namespace GraphTools */
+}
+
+Partition Partitioner::growRegions(const Graph& g, const vector<index>& startingPoints) {
+	Partition constraint(g.numberOfNodes());
+	constraint.allToOnePartition();
+	return growRegions(g, startingPoints, constraint);
+}
+
+Partition Partitioner::growRegions(const Graph& g, const vector<index>& startingPoints, Partition constraint) {
+	/**
+	 * validate input
+	 */
+	const count n = g.numberOfNodes();
+	const count z = g.upperNodeIdBound();
+	assert(startingPoints.size() <= n);
+	assert(constraint.numberOfElements() == n);
+	for (index point : startingPoints) assert(g.hasNode(point));
+
+	/**
+	 * allocate data structures
+	 */
+	vector<bool> visited(z, false);
+	queue<index> bfsQueue;
+	Partition result(z);
+	result.allToSingletons();
+
+	/**
+	 * fill BFS queue with starting points
+	 */
+	for (index point : startingPoints) {
+		bfsQueue.push(point);
+		visited[point] = true;
+	}
+
+	while (!bfsQueue.empty()) {
+		index nextNode = bfsQueue.front();
+		for (index neighbor : g.neighbors(nextNode)) {
+			if (visited[neighbor] || !constraint.inSameSubset(nextNode, neighbor)) continue;
+
+			//if not visited and in same partition
+			visited[neighbor] = true;
+			assert(result[neighbor] == neighbor);
+			result.moveToSubset(result[nextNode], neighbor);
+			bfsQueue.push(neighbor);
+		}
+	}
+
+	return result;
+}
+
+
+
+
 } /* namespace NetworKit */
