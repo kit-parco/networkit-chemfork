@@ -8,6 +8,8 @@
 #ifndef PARTITIONER_H_
 #define PARTITIONER_H_
 
+#include <vector>
+
 #include "../graph/Graph.h"
 #include "../structures/Partition.h"
 #include "../base/Algorithm.h"
@@ -16,7 +18,6 @@
 #include "../coarsening/MatchingContracter.h"
 
 namespace NetworKit {
-namespace GraphTools {
 
 class Partitioner : public Algorithm {
 public:
@@ -42,12 +43,14 @@ public:
 protected:
 	edgeweight fiducciaMatheysesStep(const Graph& G, Partition& input);
 	static edgeweight calculateGain(const Graph& g, const Partition& input, index v, index targetPart);
+	static Partition recursiveBisection(const Graph& g);
+	static Partition growRegions(const Graph& g, const std::vector<index>& startingPoints);
+	static Partition growRegions(const Graph& g, const std::vector<index>& startingPoints, Partition constraint);
 
 	const Graph& G;
 	Partition result;
 
 };
 
-} /* namespace GraphTools */
 } /* namespace NetworKit */
 #endif /* PARTITIONER_H_ */
