@@ -190,8 +190,36 @@ std::string Partitioner::toString() const {
 	return "TODO";
 }
 
-Partition Partitioner::recursiveBisection(const Graph& g) {
+Partition Partitioner::recursiveBisection(const Graph& g, count k) {
+	Partition trivialConstraint(g.upperNodeIdBound());
+	trivialConstraint.allToOnePartition();
+	recursiveBisection(g, k, trivialConstraint, trivialConstraint[0]);
+	return trivialConstraint;
+}
 
+void Partitioner::recursiveBisection(const Graph& g, count k, Partition& mask, index maskID) {
+	if (k == 1) return;
+
+	index a, b;
+	std::tie(a,b) = getMaximumDistancePair(g, mask, maskID);
+	const count firstWeight = k/2;
+	const count secondWeight = k - firstWeight;
+
+	vector<index> points(2);
+	vector<double> weights(2);
+	points[0] = a;
+	points[1] = b;
+	weights[0] = firstWeight;
+	weights[1] = secondWeight;
+
+	/**
+	 * here, we assume that the region growing overwrites the partitions of the input. TODO: change implementation
+	 * Additionally, we need a region growing implementation with custom weights
+	 */
+	growRegions(g,  points, mask);
+
+	recursiveBisection(g, firstWeight, mask, a);
+	recursiveBisection(g, secondWeight, mask, b);
 }
 
 Partition Partitioner::growRegions(const Graph& g, const vector<index>& startingPoints) {
@@ -200,7 +228,7 @@ Partition Partitioner::growRegions(const Graph& g, const vector<index>& starting
 	return growRegions(g, startingPoints, constraint);
 }
 
-Partition Partitioner::growRegions(const Graph& g, const vector<index>& startingPoints, Partition constraint) {
+Partition Partitioner::growRegions(const Graph& g, const vector<index>& startingPoints, const Partition& constraint) {
 	/**
 	 * validate input
 	 */
@@ -226,8 +254,12 @@ Partition Partitioner::growRegions(const Graph& g, const vector<index>& starting
 		visited[point] = true;
 	}
 
+	/**
+	 * run BFS from sources and assign partitions
+	 */
 	while (!bfsQueue.empty()) {
 		index nextNode = bfsQueue.front();
+		bfsQueue.pop();
 		for (index neighbor : g.neighbors(nextNode)) {
 			if (visited[neighbor] || !constraint.inSameSubset(nextNode, neighbor)) continue;
 
@@ -242,6 +274,71 @@ Partition Partitioner::growRegions(const Graph& g, const vector<index>& starting
 	return result;
 }
 
+/**
+ * optimization: give one node as parameter, there should be one lying around somewhere
+ */
+std::pair<index, index> Partitioner::getMaximumDistancePair(const Graph& g, const Partition& constraint, const index partition) {
+	assert(constraint.subsetSizeMap().at(partition) >= 2);
+	assert(constraint.numberOfElements() == g.numberOfNodes());
+
+	index z = g.upperNodeIdBound();
+	edgeweight infDist = std::numeric_limits<edgeweight>::max();
+	vector<edgeweight> distances(z, infDist);
+
+	/**
+	 * get node in correct partition
+	 */
+	index startingNode;
+	g.forNodes([&constraint, partition, &startingNode](index u){
+		if (constraint[u] == partition)
+			startingNode = u;
+			//this is wasteful, since it keeps iterating over the whole graph even if a node has been found
+	});
+
+	/**
+	 * run breadth-first-searches constrained to the partition until distance no longer grows
+	 */
+	edgeweight maxDistance = 0;
+	edgeweight lastDistance = -1;
+	index a = startingNode;
+	index b = startingNode;
+
+	while (maxDistance > lastDistance) {
+		a = b;
+		lastDistance = maxDistance;
+		queue<index> bfsQueue;
+		vector<bool> visited(z, false);
+		distances.clear();
+		distances.resize(z, infDist);
+
+		bfsQueue.push(a);
+		visited[a] = true;
+		distances[a] = 0;
+
+		while (!bfsQueue.empty()) {
+			index currentNode = bfsQueue.front();
+			bfsQueue.pop();
+
+			for (index neighbor : g.neighbors(currentNode)) {
+				if (visited[neighbor] || !constraint.inSameSubset(currentNode, neighbor)) continue;
+
+				assert(distances[neighbor] == infDist);
+				distances[neighbor] = distances[currentNode] + 1;
+
+				//if not visited and in same partition
+				visited[neighbor] = true;
+				bfsQueue.push(neighbor);
+			}
+			b = currentNode;
+			assert(maxDistance <= distances[currentNode]);
+			if (maxDistance < distances[currentNode]) {
+				maxDistance = distances[currentNode];
+			}
+		}
+	}
+
+	return {a, b};
+}
 
 
 

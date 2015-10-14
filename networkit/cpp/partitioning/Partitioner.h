@@ -9,6 +9,7 @@
 #define PARTITIONER_H_
 
 #include <vector>
+#include <utility>
 
 #include "../graph/Graph.h"
 #include "../structures/Partition.h"
@@ -43,9 +44,15 @@ public:
 protected:
 	edgeweight fiducciaMatheysesStep(const Graph& G, Partition& input);
 	static edgeweight calculateGain(const Graph& g, const Partition& input, index v, index targetPart);
-	static Partition recursiveBisection(const Graph& g);
+	static Partition recursiveBisection(const Graph& g, count k);
+	static void recursiveBisection(const Graph& g, count k, Partition& input, index maskID);
+
+	/**
+	 * possibly extend the interface with multipliers to allow partitions with different target sizes
+	 */
 	static Partition growRegions(const Graph& g, const std::vector<index>& startingPoints);
-	static Partition growRegions(const Graph& g, const std::vector<index>& startingPoints, Partition constraint);
+	static Partition growRegions(const Graph& g, const std::vector<index>& startingPoints, const Partition& constraint);
+	static std::pair<index, index> getMaximumDistancePair(const Graph& g, const Partition& constraint, const index partition);
 
 	const Graph& G;
 	Partition result;
