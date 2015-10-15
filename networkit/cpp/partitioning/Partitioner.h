@@ -21,6 +21,8 @@
 namespace NetworKit {
 
 class Partitioner : public Algorithm {
+	friend class PartitionerGTest;
+
 public:
 	Partitioner(const Graph& G);
 	virtual ~Partitioner() = default;
