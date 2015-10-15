@@ -18,21 +18,18 @@ using Aux::PrioQueue;
 
 namespace NetworKit {
 
-Partitioner::Partitioner(const Graph& G) : Algorithm(), G(G), result(0) {
-
+Partitioner::Partitioner(const Graph& G, count numParts) : Algorithm(), G(G), numParts(numParts), result(0) {
+	if (G.numberOfSelfLoops() > 0) throw std::runtime_error("Graph must not have self-loops.");
 }
 
 void Partitioner::run() {
-	const int numParts = 10;
 
 	std::function<Partition(const Graph&)> partitionLambda = [&](const Graph& g) -> Partition {
 	   count n = g.numberOfNodes();
 
 	   // coarsen recursively until graph is small enough
 	   if (n <= 2 * numParts) {
-		   Partition initial(n);
-
-		   // TODO: initial partitioning with BRKGA
+		   Partition initial = recursiveBisection(g, numParts);
 
 		   return initial;
 	   }

@@ -13,10 +13,14 @@
 
 #include <gtest/gtest.h>
 
+namespace NetworKit {
+
 
 class PartitionerGTest: public testing::Test  {
 
 };
+
+} //end namespace NetworKit
 
 #endif /* PARTITIONERGTEST_H_ */
 

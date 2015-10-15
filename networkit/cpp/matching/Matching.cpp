@@ -55,6 +55,10 @@ void Matching::match(const node& u, const node& v) {
 }
 
 void Matching::unmatch(const node& u, const node& v) {
+	/**
+	 * this will cause isMatched(u) to answer true!
+	 * TODO: fix this
+	 */
 	data[u] = u;
 	data[v] = v;
 }

@@ -24,13 +24,13 @@ class Partitioner : public Algorithm {
 	friend class PartitionerGTest;
 
 public:
-	Partitioner(const Graph& G);
+	Partitioner(const Graph& G, count numParts = 10);
 	virtual ~Partitioner() = default;
 
 	/**
 	 * Apply algorithm to graph
 	 */
-	virtual void run() = 0;
+	virtual void run() override;
 
 	/**
 	 * Returns the result of the run method or throws an error, if the algorithm hasn't run yet.
@@ -43,9 +43,10 @@ public:
 	 */
 	virtual std::string toString() const;
 
+	static edgeweight calculateGain(const Graph& g, const Partition& input, index v, index targetPart);
+
 protected:
 	edgeweight fiducciaMatheysesStep(const Graph& G, Partition& input);
-	static edgeweight calculateGain(const Graph& g, const Partition& input, index v, index targetPart);
 	static Partition recursiveBisection(const Graph& g, count k);
 	static void recursiveBisection(const Graph& g, count k, Partition& input, index maskID);
 
@@ -57,6 +58,7 @@ protected:
 	static std::pair<index, index> getMaximumDistancePair(const Graph& g, const Partition& constraint, const index partition);
 
 	const Graph& G;
+	const count numParts;
 	Partition result;
 
 };

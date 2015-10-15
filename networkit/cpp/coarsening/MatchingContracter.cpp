@@ -24,6 +24,8 @@ void MatchingContracter::run() {
 	std::vector<node> mapFineToCoarse(z, none);
 	G.forNodes([&](node v) { // TODO: difficult in parallel
 		index mate = M.mate(v);
+		if (mate == v) DEBUG("Node ", v, " is its own matching!");
+		assert(mate != v);
 		if ((mate == none) || (v < mate)) {
 			// vertex is carried over to the new level
 			mapFineToCoarse[v] = idx;
@@ -33,6 +35,8 @@ void MatchingContracter::run() {
 			// vertex is not carried over, receives ID of mate
 			mapFineToCoarse[v] = mapFineToCoarse[mate];
 		}
+		assert(mapFineToCoarse[v] != none);
+		assert(mapFineToCoarse[v] < cn);
 	});
 
 //	for (node v = 0; v < n; ++v) {
@@ -52,6 +56,7 @@ void MatchingContracter::run() {
 
 	Gcoarsed = std::move(cG);
 	nodeMapping = std::move(mapFineToCoarse);
+	hasRun = true;
 }
 
 } /* namespace NetworKit */
