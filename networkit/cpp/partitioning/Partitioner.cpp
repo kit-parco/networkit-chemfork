@@ -175,8 +175,25 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) 
 	return gains[maxIndex];
 }
 
-edgeweight Partitioner::calculateGain(const Graph& g, const Partition& input, index v, index targetPart) {
-	return 0;
+edgeweight Partitioner::calculateGain(const Graph& g, const Partition& input, index u, index targetPart) {
+	assert(input.numberOfElements() >= g.numberOfNodes());
+	assert(g.hasNode(u));
+	assert(input.contains(u));
+
+	auto subsetIDs = input.getSubsetIds();
+	assert(subsetIDs.count(targetPart) == 1);
+
+	edgeweight extDegreeNow = 0;
+	edgeweight extDegreeAfterMove = 0;
+
+	const index oldPartition = input[u];
+
+	g.forNeighborsOf(u, [&extDegreeNow, &extDegreeAfterMove, &u, &targetPart, &input, &g, &oldPartition](index v){
+		if (input[v] != oldPartition) extDegreeNow += g.weight(u, v);
+		if (input[v] != targetPart) extDegreeAfterMove  += g.weight(u, v);
+	});
+
+	return extDegreeAfterMove - extDegreeNow;
 }
 
 Partition Partitioner::getPartition() {
