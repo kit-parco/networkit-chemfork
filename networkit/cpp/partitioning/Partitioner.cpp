@@ -70,16 +70,11 @@ void Partitioner::run() {
 
 edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) {
 	/**
-	 * necessary data structures:
-	 * - integer priority queue for each partition
-	 * - history of move operations and gain values
-	 */
-
-	/**
 	 * allocate data structures
 	 */
 	const count k = part.numberOfSubsets();
 	const count n = part.numberOfElements();
+	const auto subsetIds = part.getSubsetIds();
 	vector<PrioQueue<edgeweight, index> > queues(part.upperBound(),n);
 	vector<edgeweight> gains;
 	vector<pair<index, index> > transfers;
@@ -89,31 +84,40 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) 
 	/**
 	 * fill priority queues
 	 */
-	for (index ID : part.getSubsetIds()) {
-		for (index j : part.getMembers(ID)) {
-			edgeweight maxGain = -total;
-			index IdAtMax = 0;
-			for (index otherSubset : part.getSubsetIds()) {
-				edgeweight thisgain = calculateGain(g, part, j, otherSubset);
-				if (thisgain > maxGain && otherSubset != ID) {
-					IdAtMax = otherSubset;
-					maxGain = thisgain;
-				}
+	part.forEntries([total, &g, &part, &queues, &subsetIds](index node, index clusterID){
+		assert(g.hasNode(node));
+		edgeweight maxGain = -total;
+		index IdAtMax = 0;
+		for (index otherSubset : subsetIds) {
+			edgeweight thisgain = calculateGain(g, part, node, otherSubset);
+			if (thisgain > maxGain && otherSubset != clusterID) {
+				IdAtMax = otherSubset;
+				maxGain = thisgain;
 			}
-			assert(ID < queues.size());
-			queues[ID].insert(maxGain, j);
 		}
+		assert(clusterID < queues.size());
+		queues[clusterID].insert(maxGain, node);
+	});
+
+	count queuedSum = 0;
+	for (index i = 0; i < queues.size(); i++) {
+		queuedSum += queues[i].size();
 	}
+	assert(queuedSum == n);
 
 	/**
 	 * iterate over all vertices,
 	 */
 	edgeweight gainsum = 0;
 	bool allQueuesEmpty = false;
+
+	vector<bool> moved(g.upperNodeIdBound(), false);
+
 	while (!allQueuesEmpty) {
 		allQueuesEmpty = true;
-		for (index partID : part.getSubsetIds()) {
+		for (index partID : subsetIds) {
 			assert(partID < queues.size());
+			if (queues[partID].size() == 0) continue; //nothing to move here, queue is empty
 			index topVertex;
 			double topGain;
 			std::tie(topGain, topVertex) = queues[partID].extractMin();
@@ -121,7 +125,7 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) 
 			//now get target partition. This could be sped up by saving the target partition in a separate data structure
 			edgeweight maxGain = -total;
 			index IdAtMax = 0;
-			for (index otherSubset : part.getSubsetIds()) {
+			for (index otherSubset : subsetIds) {
 				edgeweight thisgain = calculateGain(g, part, topVertex, otherSubset);
 				if (thisgain > maxGain && otherSubset != partID) {
 					IdAtMax = otherSubset;
@@ -130,7 +134,9 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) 
 			}
 
 			//move node there
+			TRACE("Moved node ", topVertex, " to partition ", IdAtMax, " for gain of ", maxGain);
 			part.moveToSubset(IdAtMax, topVertex);
+			moved[topVertex] = true;
 
 			//update history
 			gainsum += maxGain;
@@ -139,26 +145,34 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) 
 			transferedVertices.push_back(topVertex);
 
 			//update gains of neighbours
-			g.forNeighborsOf(topVertex, [&g, &topVertex, &partID, &total, &queues, &part](index w){
+			g.forNeighborsOf(topVertex, [&g, &topVertex, &partID, &total, &queues, &part, &subsetIds, &moved](index w){
 				//update gain
 				edgeweight newMaxGain = -total;
-				for (index otherSubset : part.getSubsetIds()) {
-					edgeweight thisgain = calculateGain(g, part, topVertex, otherSubset);
-					if (thisgain > newMaxGain && otherSubset != partID) {
+				for (index otherSubset : subsetIds) {
+					edgeweight thisgain = calculateGain(g, part, w, otherSubset);
+					if (thisgain > newMaxGain && otherSubset != part[w]) {
 						newMaxGain = thisgain;
 					}
 				}
 
-				//update prioqueue
-				queues[part[w]].remove(w);
-				queues[part[w]].insert(newMaxGain, w);
+				if (!moved[w]) {
+					//update prioqueue
+					queues[part[w]].remove(w);
+					queues[part[w]].insert(newMaxGain, w);
+
+				}
 			});
 
-			allQueuesEmpty = allQueuesEmpty && queues[partID].size() == 0;
+			allQueuesEmpty = false;
 		}
 	}
 
-	assert(gains.size() == n);
+	g.forNodes([&moved](index v){assert(moved[v]);});
+
+	count testedNodes = gains.size();
+	assert(testedNodes == n);
+
+
 
 	/**
 	 * now find best partition among those tested
@@ -173,7 +187,8 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) 
 	 */
 	for (int i = n-1; i > maxIndex; i--) {
 		assert(part[transferedVertices[i]] == transfers[i].second);
-		part.moveToSubset(transferedVertices[i], transfers[i].first);
+		TRACE("Reversing move of ", transferedVertices[i], " from ", transfers[i].second, " back to ", transfers[i].first);
+		part.moveToSubset(transfers[i].first, transferedVertices[i]);
 	}
 	return gains[maxIndex];
 }
@@ -182,9 +197,6 @@ edgeweight Partitioner::calculateGain(const Graph& g, const Partition& input, in
 	assert(input.numberOfElements() >= g.numberOfNodes());
 	assert(g.hasNode(u));
 	assert(input.contains(u));
-
-	auto subsetIDs = input.getSubsetIds();
-	assert(subsetIDs.count(targetPart) == 1);
 
 	edgeweight extDegreeNow = 0;
 	edgeweight extDegreeAfterMove = 0;
@@ -222,7 +234,8 @@ void Partitioner::recursiveBisection(const Graph& g, count k, Partition& mask, i
 	if (k == 1) return;
 	auto beforeMap = mask.subsetSizeMap();
 	count nodes = beforeMap.at(maskID);
-	assert(k <= nodes);
+	if (nodes < 2) return; //this risk returning less partitions then demanded.
+	//assert(k <= nodes);
 
 	index a, b;
 	std::tie(a,b) = getMaximumDistancePair(g, mask, maskID);
@@ -247,8 +260,8 @@ void Partitioner::recursiveBisection(const Graph& g, count k, Partition& mask, i
 
 	assert(firstRegionSize + secondRegionSize == nodes);
 
-	assert(firstRegionSize >= firstWeight);
-	assert(secondRegionSize >= secondWeight);
+	//assert(firstRegionSize >= firstWeight);
+	//assert(secondRegionSize >= secondWeight);
 
 	recursiveBisection(g, firstWeight, mask, a);
 	recursiveBisection(g, secondWeight, mask, b);
@@ -310,10 +323,11 @@ Partition Partitioner::growRegions(const Graph& g, const vector<index>& starting
 				assert(g.hasNode(nextNode));
 			} while (!bfsQueues[p].empty() && visited[nextNode]  && startingPoints[p] != nextNode);
 
-			if (!visited[nextNode]) {
+			if (visited[nextNode] && !(startingPoints[p] == nextNode)) continue;
+			//if (!visited[nextNode]) {
 				result.moveToSubset(startingPoints[p], nextNode);
 				visited[nextNode] = true;
-			}
+			//}
 
 			for (index neighbor : g.neighbors(nextNode)) {
 				if (visited[neighbor] || !constraint.inSameSubset(nextNode, neighbor)) continue;
@@ -404,7 +418,7 @@ std::pair<index, index> Partitioner::getMaximumDistancePair(const Graph& g, cons
 
 	}
 
-	assert(GraphDistance().unweightedDistance(g, a,b) == maxDistance);
+	//assert(GraphDistance().unweightedDistance(g, a,b) == maxDistance); does not need to be true, there might be a shortcut through another partitition
 	return {a, b};
 }
 
