@@ -54,7 +54,7 @@ protected:
 	 * possibly extend the interface with multipliers to allow partitions with different target sizes
 	 */
 	static Partition growRegions(const Graph& g, const std::vector<index>& startingPoints);
-	static Partition growRegions(const Graph& g, const std::vector<index>& startingPoints, const Partition& constraint);
+	static Partition growRegions(const Graph& g, const std::vector<index>& startingPoints, const std::vector<count>& weights, const Partition& constraint);
 	static std::pair<index, index> getMaximumDistancePair(const Graph& g, const Partition& constraint, const index partition);
 
 	const Graph& G;
