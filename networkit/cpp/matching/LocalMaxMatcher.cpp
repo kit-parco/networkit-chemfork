@@ -61,7 +61,7 @@ Matching LocalMaxMatcher::run() {
 		for (auto edge: edges) {
 			node u = edge.s;
 			node v = edge.t;
-			if (candidates[u].t == v && candidates[v].t == u) {
+			if (candidates[u].t == v && candidates[v].t == u && u != v) {
 				// both nodes agree
 				M.match(u, v);
 			}
@@ -71,7 +71,7 @@ Matching LocalMaxMatcher::run() {
 		// adjust candidates
 		std::vector<MyEdge> newEdges;
 		for (auto edge: edges) {
-			if (! M.isMatched(edge.s) && ! M.isMatched(edge.t)) {
+			if (! M.isMatched(edge.s) && ! M.isMatched(edge.t) && edge.s != edge.t) {
 				newEdges.push_back(edge);
 				candidates[edge.s].w = (edgeweight) 0;
 				candidates[edge.t].w = (edgeweight) 0;
