@@ -180,4 +180,14 @@ std::set<index> Partition::getSubsetIds() const {
 	return ids;
 }
 
+edgeweight Partition::calculateCutWeight(const Graph& G) {
+	edgeweight result = 0;
+	G.forEdges([&](index u, index v){
+		if (!inSameSubset(u,v)) {
+			result += G.weight(u,v);
+		}
+	});
+	return result;
+}
+
 } /* namespace NetworKit */

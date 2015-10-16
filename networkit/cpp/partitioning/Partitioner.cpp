@@ -30,7 +30,7 @@ void Partitioner::run() {
 	   DEBUG("Partitioning graph with ", n, " nodes into ", numParts, " parts.");
 
 	   // coarsen recursively until graph is small enough
-	   if (n <= 4 * numParts) {
+	   if (n <= 2 * numParts) {
 		   Partition initial = recursiveBisection(g, numParts);
 
 		   return initial;
@@ -193,7 +193,7 @@ edgeweight Partitioner::calculateGain(const Graph& g, const Partition& input, in
 		if (input[v] != targetPart) extDegreeAfterMove  += g.weight(u, v);
 	});
 
-	return extDegreeAfterMove - extDegreeNow;
+	return extDegreeNow - extDegreeAfterMove;
 }
 
 Partition Partitioner::getPartition() {
