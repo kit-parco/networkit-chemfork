@@ -11,6 +11,7 @@
 
 #include "Partitioner.h"
 #include "../auxiliary/PrioQueue.h"
+#include "../auxiliary/Random.h"
 
 #include "../graph/GraphDistance.h"
 
@@ -226,7 +227,7 @@ void Partitioner::recursiveBisection(const Graph& g, count k, Partition& mask, i
 	index a, b;
 	std::tie(a,b) = getMaximumDistancePair(g, mask, maskID);
 	assert(a != b);
-	const count firstWeight = k/2;
+	const count firstWeight = k/2 + (k % 2 != 0 && Aux::Random::real() < 0.5) ? 1 : 0; //uneven numbers are randomly rounded to the first or the second half
 	const count secondWeight = k - firstWeight;
 
 	vector<index> points(2);
@@ -244,7 +245,7 @@ void Partitioner::recursiveBisection(const Graph& g, count k, Partition& mask, i
 	count firstRegionSize = map.at(a);
 	count secondRegionSize = map.at(b);
 
-	assert(firstRegionSize + secondRegionSize == beforeMap.at(maskID));
+	assert(firstRegionSize + secondRegionSize == nodes);
 
 	assert(firstRegionSize >= firstWeight);
 	assert(secondRegionSize >= secondWeight);
