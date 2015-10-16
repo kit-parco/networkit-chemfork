@@ -12,6 +12,8 @@
 #include "Partitioner.h"
 #include "../auxiliary/PrioQueue.h"
 
+#include "../graph/GraphDistance.h"
+
 using std::vector;
 using std::pair;
 using std::queue;
@@ -224,17 +226,16 @@ void Partitioner::recursiveBisection(const Graph& g, count k, Partition& mask, i
 	const count secondWeight = k - firstWeight;
 
 	vector<index> points(2);
-	vector<double> weights(2);
+	vector<count> weights(2);
 	points[0] = a;
 	points[1] = b;
 	weights[0] = firstWeight;
 	weights[1] = secondWeight;
 
 	/**
-	 * here, we assume that the region growing overwrites the partitions of the input.
-	 * Additionally, we need a region growing implementation with custom weights
+	 * TODO: we need a region growing implementation with custom weights
 	 */
-	mask = growRegions(g,  points, mask);
+	mask = growRegions(g,  points, weights, mask);
 	auto map = mask.subsetSizeMap();
 	count firstRegionSize = map.at(a);
 	count secondRegionSize = map.at(b);
@@ -248,16 +249,18 @@ void Partitioner::recursiveBisection(const Graph& g, count k, Partition& mask, i
 Partition Partitioner::growRegions(const Graph& g, const vector<index>& startingPoints) {
 	Partition constraint(g.numberOfNodes());
 	constraint.allToOnePartition();
-	return growRegions(g, startingPoints, constraint);
+	vector<count> weights(startingPoints.size(), 1);
+	return growRegions(g, startingPoints, weights, constraint);
 }
 
-Partition Partitioner::growRegions(const Graph& g, const vector<index>& startingPoints, const Partition& constraint) {
+Partition Partitioner::growRegions(const Graph& g, const vector<index>& startingPoints, const vector<count>& weights, const Partition& constraint) {
 	/**
 	 * validate input
 	 */
 	const count n = g.numberOfNodes();
 	const count z = g.upperNodeIdBound();
 	assert(startingPoints.size() <= n);
+	assert(startingPoints.size() == weights.size());
 	assert(constraint.numberOfElements() == n);
 	for (index point : startingPoints) assert(g.hasNode(point));
 
@@ -265,15 +268,18 @@ Partition Partitioner::growRegions(const Graph& g, const vector<index>& starting
 	 * allocate data structures
 	 */
 	vector<bool> visited(z, false);
-	queue<index> bfsQueue;
+	vector<queue<index>> bfsQueues(startingPoints.size());
 	Partition result(constraint);
 	result.setUpperBound(std::max(*std::max_element(startingPoints.begin(), startingPoints.end())+1, constraint.upperBound()));
 
+	//TODO: shuffle partitions around randomly to avoid giving an advantage to the one with the lower index
+
 	/**
-	 * fill BFS queue with starting points
+	 * fill BFS queues with starting points
 	 */
-	for (index point : startingPoints) {
-		bfsQueue.push(point);
+	for (index p = 0; p < startingPoints.size(); p++) {
+		index point = startingPoints[p];
+		bfsQueues[p].push(point);
 		visited[point] = true;
 		result.moveToSubset(point, point);
 	}
@@ -281,19 +287,36 @@ Partition Partitioner::growRegions(const Graph& g, const vector<index>& starting
 	/**
 	 * run BFS from sources and assign partitions
 	 */
-	while (!bfsQueue.empty()) {
-		index nextNode = bfsQueue.front();
-		bfsQueue.pop();
-		for (index neighbor : g.neighbors(nextNode)) {
-			if (visited[neighbor] || !constraint.inSameSubset(nextNode, neighbor)) continue;
+	bool allQueuesEmpty = false;
+	while (!allQueuesEmpty) {
+		allQueuesEmpty = true;
+		for (index p = 0; p < bfsQueues.size(); p++) {
+			if (bfsQueues[p].empty()) continue;
+			allQueuesEmpty = false;
 
-			//if not visited and in same partition
-			visited[neighbor] = true;
-			result.moveToSubset(result[nextNode], neighbor);
-			bfsQueue.push(neighbor);
+			index nextNode;
+
+			do {
+				nextNode = bfsQueues[p].front();
+				bfsQueues[p].pop();
+				assert(g.hasNode(nextNode));
+			} while (!bfsQueues[p].empty() && visited[nextNode]  && startingPoints[p] != nextNode);
+
+			if (visited[nextNode] && startingPoints[p] != nextNode) continue;
+
+			result.moveToSubset(startingPoints[p], nextNode);
+			visited[nextNode] = true;
+
+			for (index neighbor : g.neighbors(nextNode)) {
+				if (visited[neighbor] || !constraint.inSameSubset(nextNode, neighbor)) continue;
+
+				//if not visited and in same partition
+				bfsQueues[p].push(neighbor);
+			}
 		}
 	}
 
+	//TODO: check that all nodes have been visited
 	return result;
 }
 
@@ -360,6 +383,7 @@ std::pair<index, index> Partitioner::getMaximumDistancePair(const Graph& g, cons
 		}
 	}
 
+	assert(GraphDistance().unweightedDistance(g, a,b) == maxDistance);
 	return {a, b};
 }
 
