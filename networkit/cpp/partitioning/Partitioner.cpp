@@ -7,6 +7,7 @@
 
 #include <tuple>
 #include <queue>
+#include <algorithm>
 
 #include "Partitioner.h"
 #include "../auxiliary/PrioQueue.h"
@@ -26,9 +27,10 @@ void Partitioner::run() {
 
 	std::function<Partition(const Graph&)> partitionLambda = [&](const Graph& g) -> Partition {
 	   count n = g.numberOfNodes();
+	   DEBUG("Partitioning graph with ", n, " nodes into ", numParts, " parts.");
 
 	   // coarsen recursively until graph is small enough
-	   if (n <= 2 * numParts) {
+	   if (n <= 4 * numParts) {
 		   Partition initial = recursiveBisection(g, numParts);
 
 		   return initial;
@@ -37,6 +39,7 @@ void Partitioner::run() {
 		   // recursive coarsening
 		   LocalMaxMatcher matcher(g);
 		   Matching matching = matcher.run();
+		   assert(matching.isProper(g));
 		   MatchingContracter coarsener(g, matching);
 		   coarsener.run();
 		   Graph coarseG = coarsener.getCoarseGraph();
@@ -205,6 +208,7 @@ std::string Partitioner::toString() const {
 }
 
 Partition Partitioner::recursiveBisection(const Graph& g, count k) {
+	assert(k <= g.numberOfNodes());
 	Partition trivialConstraint(g.upperNodeIdBound());
 	trivialConstraint.allToOnePartition();
 	recursiveBisection(g, k, trivialConstraint, trivialConstraint[0]);
@@ -227,10 +231,15 @@ void Partitioner::recursiveBisection(const Graph& g, count k, Partition& mask, i
 	weights[1] = secondWeight;
 
 	/**
-	 * here, we assume that the region growing overwrites the partitions of the input. TODO: change implementation
+	 * here, we assume that the region growing overwrites the partitions of the input.
 	 * Additionally, we need a region growing implementation with custom weights
 	 */
-	growRegions(g,  points, mask);
+	mask = growRegions(g,  points, mask);
+	auto map = mask.subsetSizeMap();
+	count firstRegionSize = map.at(a);
+	count secondRegionSize = map.at(b);
+	assert(firstRegionSize >= firstWeight);
+	assert(secondRegionSize >= secondWeight);
 
 	recursiveBisection(g, firstWeight, mask, a);
 	recursiveBisection(g, secondWeight, mask, b);
@@ -257,8 +266,8 @@ Partition Partitioner::growRegions(const Graph& g, const vector<index>& starting
 	 */
 	vector<bool> visited(z, false);
 	queue<index> bfsQueue;
-	Partition result(z);
-	result.allToSingletons();
+	Partition result(constraint);
+	result.setUpperBound(std::max(*std::max_element(startingPoints.begin(), startingPoints.end())+1, constraint.upperBound()));
 
 	/**
 	 * fill BFS queue with starting points
@@ -266,6 +275,7 @@ Partition Partitioner::growRegions(const Graph& g, const vector<index>& starting
 	for (index point : startingPoints) {
 		bfsQueue.push(point);
 		visited[point] = true;
+		result.moveToSubset(point, point);
 	}
 
 	/**
@@ -279,7 +289,6 @@ Partition Partitioner::growRegions(const Graph& g, const vector<index>& starting
 
 			//if not visited and in same partition
 			visited[neighbor] = true;
-			assert(result[neighbor] == neighbor);
 			result.moveToSubset(result[nextNode], neighbor);
 			bfsQueue.push(neighbor);
 		}
@@ -292,6 +301,7 @@ Partition Partitioner::growRegions(const Graph& g, const vector<index>& starting
  * optimization: give one node as parameter, there should be one lying around somewhere
  */
 std::pair<index, index> Partitioner::getMaximumDistancePair(const Graph& g, const Partition& constraint, const index partition) {
+	assert(partition < constraint.upperBound());
 	assert(constraint.subsetSizeMap().at(partition) >= 2);
 	assert(constraint.numberOfElements() == g.numberOfNodes());
 
@@ -344,7 +354,6 @@ std::pair<index, index> Partitioner::getMaximumDistancePair(const Graph& g, cons
 				bfsQueue.push(neighbor);
 			}
 			b = currentNode;
-			assert(maxDistance <= distances[currentNode]);
 			if (maxDistance < distances[currentNode]) {
 				maxDistance = distances[currentNode];
 			}
