@@ -75,6 +75,7 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) 
 	const count k = part.numberOfSubsets();
 	const count n = part.numberOfElements();
 	const auto subsetIds = part.getSubsetIds();
+	vector<index> bestTargetPartition(g.upperNodeIdBound());
 	vector<PrioQueue<edgeweight, index> > queues(part.upperBound(),n);
 	vector<edgeweight> gains;
 	vector<pair<index, index> > transfers;
@@ -84,7 +85,7 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) 
 	/**
 	 * fill priority queues
 	 */
-	part.forEntries([total, &g, &part, &queues, &subsetIds](index node, index clusterID){
+	part.forEntries([total, &g, &part, &queues, &subsetIds, &bestTargetPartition](index node, index clusterID){
 		assert(g.hasNode(node));
 		edgeweight maxGain = -total;
 		index IdAtMax = 0;
@@ -95,6 +96,7 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) 
 				maxGain = thisgain;
 			}
 		}
+		bestTargetPartition[node] = IdAtMax;
 		assert(clusterID < queues.size());
 		queues[clusterID].insert(maxGain, node);
 	});
@@ -113,6 +115,7 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) 
 
 	vector<bool> moved(g.upperNodeIdBound(), false);
 
+
 	while (!allQueuesEmpty) {
 		allQueuesEmpty = true;
 		for (index partID : subsetIds) {
@@ -122,40 +125,35 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) 
 			double topGain;
 			std::tie(topGain, topVertex) = queues[partID].extractMin();
 
-			//now get target partition. This could be sped up by saving the target partition in a separate data structure
-			edgeweight maxGain = -total;
-			index IdAtMax = 0;
-			for (index otherSubset : subsetIds) {
-				edgeweight thisgain = calculateGain(g, part, topVertex, otherSubset);
-				if (thisgain > maxGain && otherSubset != partID) {
-					IdAtMax = otherSubset;
-					maxGain = thisgain;
-				}
-			}
+			index IdAtMax = bestTargetPartition[topVertex];
+			//now get target partition.
 
 			//move node there
-			TRACE("Moved node ", topVertex, " to partition ", IdAtMax, " for gain of ", maxGain);
+			TRACE("Moved node ", topVertex, " to partition ", IdAtMax, " for gain of ", topGain);
 			part.moveToSubset(IdAtMax, topVertex);
 			moved[topVertex] = true;
 
 			//update history
-			gainsum += maxGain;
+			gainsum += topGain;
 			gains.push_back(gainsum);
 			transfers.emplace_back(partID, IdAtMax);
 			transferedVertices.push_back(topVertex);
 
 			//update gains of neighbours
-			g.forNeighborsOf(topVertex, [&g, &topVertex, &partID, &total, &queues, &part, &subsetIds, &moved](index w){
-				//update gain
-				edgeweight newMaxGain = -total;
-				for (index otherSubset : subsetIds) {
-					edgeweight thisgain = calculateGain(g, part, w, otherSubset);
-					if (thisgain > newMaxGain && otherSubset != part[w]) {
-						newMaxGain = thisgain;
-					}
-				}
-
+			g.forNeighborsOf(topVertex, [&g, topVertex, partID, total, &queues, &part, &subsetIds, &moved, &bestTargetPartition](index w){
 				if (!moved[w]) {
+					//update gain
+					edgeweight newMaxGain = -total;
+					index IdAtMax = 0;
+					for (index otherSubset : subsetIds) {
+						edgeweight thisgain = calculateGain(g, part, w, otherSubset);
+						if (thisgain > newMaxGain && otherSubset != part[w]) {
+							newMaxGain = thisgain;
+							IdAtMax = otherSubset;
+						}
+					}
+					bestTargetPartition[w] = IdAtMax;
+
 					//update prioqueue
 					queues[part[w]].remove(w);
 					queues[part[w]].insert(newMaxGain, w);
