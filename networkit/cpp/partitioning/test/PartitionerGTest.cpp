@@ -32,6 +32,12 @@ TEST_F(PartitionerGTest, testGainUnweighted) {
 	part.moveToSubset(secondPartition, 4);
 	part.moveToSubset(secondPartition, 5);
 
+	auto map = part.subsetSizeMap();
+	EXPECT_EQ(4, map.at(0));
+	EXPECT_EQ(2, map.at(1));
+
+	EXPECT_EQ(3, part.calculateCutWeight(G));
+
 	EXPECT_EQ(0, Partitioner::calculateGain(G, part, 3, secondPartition));
 	EXPECT_EQ(-1, Partitioner::calculateGain(G, part, 1, secondPartition));
 }
