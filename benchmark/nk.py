@@ -3,7 +3,7 @@ import networkit
 from util import *
 import base
 
-framework = " (nk)"
+framework = "(nk)"
 
 # - connected components (properties.ConnectedComponents, properties.ParallelConnectedComponents)
 
@@ -26,13 +26,6 @@ class bConnectedComponents(Algo):
 		cc.run()
 		return cc.numberOfComponents()
 
-class bParallelConnectedComponents(Algo):
-	name = "ParallelConnectedComponents" + framework
-
-	def run(self, G):
-		cc = networkit.properties.ParallelConnectedComponents(G)
-		cc.run()
-		return cc.numberOfComponents()
 
 # - k-core decomposition (properties.CoreDecomposition)
 
@@ -40,24 +33,15 @@ class bCoreDecomposition(Algo):
 	name = "CoreDecomposition" + framework
 
 	def run(self, G):
-		cd = networkit.properties.CoreDecomposition(G)
+		cd = networkit.centrality.CoreDecomposition(G)
 		cd.run()
 
-# - degree distribution power-law estimation (properties.powerLawExponent)
-
-class bPowerLaw(Algo):
-	name = "PowerLaw" + framework
+class bCoreDecompositionSeq(Algo):
+	name = "CoreDecompositionSeq" + framework
 
 	def run(self, G):
-		return networkit.properties.degreePowerLaw(G)
-
-# - degree assortativity (properties.degreeAssortativity)
-
-class bDegreeAssortativity(Algo):
-	name = "DegreeAssortativity" + framework
-
-	def run(self, G):
-		return networkit.properties.degreeAssortativity(G)
+		cd = networkit.centrality.CoreDecomposition(G, enforceBucketQueueAlgorithm=True)
+		cd.run()
 
 
 # - BFS & Dijkstra (graph.BFS, graph.Dijkstra)
@@ -75,15 +59,15 @@ class bCommunityDetectionLM(Algo):
 	name = "CommunityDetectionLM" + framework
 
 	def run(self, G):
-		plm = networkit.community.PLM(turbo=True)
-		plm.run(G)
+		plm = networkit.community.PLM(G, turbo=True)
+		plm.run()
 
 class bCommunityDetectionLP(Algo):
 	name = "CommunityDetectionLP" + framework
 
 	def run(self, G):
-		plm = networkit.community.PLP()
-		plm.run(G)
+		plm = networkit.community.PLP(G)
+		plm.run()
 
 # - diameter, exact (properties.Diameter.exactDiameter) and estimate (properties.Diameter.estimatedDiameterRange)
 
@@ -106,8 +90,8 @@ class bClusteringCoefficient(Algo):
 	name = "ClusteringCoefficient" + framework
 
 	def run(self, G):
-		c = networkit.properties.ClusteringCoefficient.avgLocal(G)
-		return c
+		networkit.centrality.LocalClusteringCoefficient(G).run()
+
 
 class bApproxClusteringCoefficient(Algo):
 	name = "ClusteringCoefficientApprox" + framework
@@ -132,6 +116,27 @@ class bPageRank(Algo):
 
 # 	- Eigenvector centrality (centrality.EigenvectorCentrality, centrality.SciPyEVZ)
 
+class bEigenvectorCentrality(Algo):
+	name = "EigenvectorCentrality" + framework
+
+	def run(self, G):
+		evc = networkit.centrality.EigenvectorCentrality(G, tol=1e-06)
+		evc.run()
+
+class bKatzCentrality(Algo):
+	name = "KatzCentrality" + framework
+
+	def run(self, G):
+		kc = networkit.centrality.KatzCentrality(G, tol=1e-06)
+		kc.run()
+
+
+class bDegreeAssortativity(Algo):
+	name = "DegreeAssortativity" + framework
+
+	def run(self, G):
+		networkit.correlation.Assortativity(G, networkit.centrality.DegreeCentrality(G).run().scores()).run()
+
 
 # 	- betweenness,  exact (centrality.Betweenness) and approximated (centrality.ApproxBetweenness, centrality.ApproxBetweenness2)
 
@@ -142,10 +147,31 @@ class bBetweenness(Algo):
 		bc = networkit.centrality.Betweenness(G)
 		bc.run()
 
+class bBetweennessSeq(Algo):
+	name = "BetweennessSeq" + framework
+
+	def run(self, G):
+		mt = networkit.getMaxNumberOfThreads()
+		networkit.setNumberOfThreads(1)
+		bc = networkit.centrality.Betweenness(G)
+		bc.run()
+		networkit.setNumberOfThreads(mt)
+
 
 class bApproxBetweenness(Algo):
 	name = "BetweennessApprox" + framework
 
 	def run(self, G):
-		bc = networkit.centrality.ApproxBetweenness(G, epsilon=0.1, delta=0.1)
+		bc = networkit.centrality.ApproxBetweenness2(G, nSamples=42)
 		bc.run()
+
+
+class bApproxBetweennessSeq(Algo):
+	name = "BetweennessApproxSeq" + framework
+
+	def run(self, G):
+		mt = networkit.getMaxNumberOfThreads()
+		networkit.setNumberOfThreads(1)
+		bc = networkit.centrality.ApproxBetweenness2(G, nSamples=42)
+		bc.run()
+		networkit.setNumberOfThreads(mt)

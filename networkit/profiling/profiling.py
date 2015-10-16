@@ -6,6 +6,9 @@
 from networkit import *
 import networkit as kit
 
+import os as os
+import sys
+
 from . import multiprocessing
 from . import stat
 from . import plot
@@ -13,6 +16,7 @@ from . import plot
 from IPython.core.display import *
 import collections
 import math
+import fnmatch
 
 
 def readfile(filename, removeWS=False):
@@ -80,15 +84,103 @@ except Exception as e:
 	print(str(e))
 
 
+class Config:
+	def __init__(self):
+		self.__options_Properties = {
+			"Diameter": False
+		}
+		self.__options_Measures = {
+			"Centrality.Degree": False,
+			"Centrality.CoreDecomposition": False,
+			"Centrality.ClusteringCoefficient": False,
+			"Centrality.PageRank": False,
+			"Centrality.KPath": False,
+			"Centrality.Katz": False,
+			"Centrality.Betweenness": False,
+			"Centrality.Closeness": False,
+			"Partition.Communities": False,
+			"Partition.ConnectedComponents": False,
+			"Partition.CoreDecomposition": False
+		}
+		self.__options_MeasureCorrelations = {
+			"Pearson": False,
+			"Spearman": False,
+			"Fechner": False
+		}
+
+	@classmethod
+	def createConfig(cls, preset="default"):
+		result = Config()
+
+		if preset == "complete":
+			result.setProperty("Diameter")
+			result.setMeasure("Centrality.Degree"),
+			result.setMeasure("Centrality.CoreDecomposition")
+			result.setMeasure("Centrality.ClusteringCoefficient")
+			result.setMeasure("Centrality.PageRank")
+			result.setMeasure("Centrality.Katz")
+			result.setMeasure("Centrality.Betweenness")
+			result.setMeasure("Centrality.Closeness")
+			result.setMeasure("Partition.Communities")
+			result.setMeasure("Partition.ConnectedComponents")
+			result.setMeasure("Partition.CoreDecomposition")
+			result.setMeasureCorrelation("Spearman")
+		elif preset == "minimal":
+			result.setMeasure("Centrality.Degree")
+			result.setMeasure("Partition.ConnectedComponents")
+		elif preset == "default":
+			result.setProperty("Diameter")
+			result.setMeasure("Centrality.Degree")
+			result.setMeasure("Centrality.ClusteringCoefficient")
+			result.setMeasure("Centrality.PageRank")
+			result.setMeasure("Centrality.Betweenness")
+			result.setMeasure("Centrality.Katz")
+			result.setMeasure("Centrality.CoreDecomposition")
+			result.setMeasure("Partition.ConnectedComponents")
+			result.setMeasure("Partition.Communities")
+			result.setMeasure("Partition.CoreDecomposition")
+			result.setMeasureCorrelation("Spearman")
+		else:
+			raise Error("no preset given")
+
+		return result
+
+	def setProperty(self, id, enabled=True):
+		if id in self.__options_Properties:
+			self.__options_Properties[id] = enabled
+
+
+	def getProperty(self, id):
+		return self.__options_Properties[id]
+
+
+	def setMeasure(self, id, enabled=True):
+		if id in self.__options_Measures:
+			self.__options_Measures[id] = enabled
+
+
+	def getMeasure(self, id):
+		return self.__options_Measures[id]
+
+
+	def setMeasureCorrelation(self, id, enabled=True):
+		if id in self.__options_MeasureCorrelations:
+			self.__options_MeasureCorrelations[id] = enabled
+
+
+	def getMeasureCorrelation(self, id):
+		return self.__options_MeasureCorrelations[id]
+
+
+
 class Profile:
 	""" TODO: """
-	__TOKEN = object();
+	__TOKEN = object()	# TODO: documentation: why is this token needed?
 	__pageCount = 0
 	__verbose = False
 	__verboseLevel = 0
 	__verboseFilename = ""
 	__parallel = multiprocessing.numberOfProcessors()
-
 
 	def __init__(self, G, token=object()):
 		""" TODO: """
@@ -99,44 +191,107 @@ class Profile:
 		self.__measures = collections.OrderedDict()
 		self.__correlations = {}
 
+	@classmethod
+	def walk(cls, inputDir, filePattern="*", outputDir=None, config=Config(), outputType="HTML", style="light", color=(0, 0, 1), recursive=False, parallel=False,  graphFormat=None):
+		if outputDir is None:
+			raise ValueError("output directory (parameter: outputDir) not specified")
+		elif not os.path.isdir(outputDir):
+			os.mkdir(outputDir)
+		if graphFormat is None:
+			raise ValueError("no graph format has been specified")
+		for (dirpath, dirnames, filenames) in os.walk(inputDir):
+			for filename in filenames:
+				file = dirpath + "/" + filename
+				if fnmatch.fnmatch(filename, filePattern):
+					cls.__verbosePrint("\n[ " + file + " ]")
+					try:
+						G = kit.readGraph(file, graphFormat)
+						try:
+							pf = cls.create(
+								G,
+								config = config,
+								type = outputType,
+								directory = outputDir,
+								token = cls.__TOKEN)
+
+							pf.output(
+								outputType = outputType,
+								directory = outputDir,
+								style = style,
+								color = color,
+								parallel = parallel,
+								token = cls.__TOKEN
+							)
+						except Exception as e:
+							cls.__verbosePrint("=> an error occured: {0} of type {1}".format(e, type(e)))
+					except:
+						cls.__verbosePrint("could not read {0}".format(file))
+					cls.__verbosePrint("\n")
+				else:
+					cls.__verbosePrint("skipping {0} as it does not match filePattern".format(file))
+			if not recursive:
+				break
+		print("Done")
+
 
 	@classmethod
-	def create(cls, G, exclude=["KPathCentrality"]):
+	def create(cls, G, config=Config(), type="HTML", directory="", token=object()):
 		""" TODO: """
+
+		if token is not cls.__TOKEN:
+			if type != "HTML" or directory != "":
+				raise ValueError("support for \"type\" and \"directory\" is not implemented");
+
+		filename  = "{0}.".format(G.getName())
+
 		result = cls(G, cls.__TOKEN)
+		# TODO: use copy constructor instead
+		result.__config = config
+
 		kit.setNumberOfThreads(result.__parallel)
 
 		def funcScores(instance):
+			""" Return node scores"""
 			return instance.scores()
 
 		def funcSizes(instance):
+			"""Return partition subset sizes"""
 			return sorted(instance.getPartition().subsetSizes())
 
-
-
 		if G.isDirected():
-			classConnectedComponents = properties.StronglyConnectedComponents
+			classConnectedComponents = components.StronglyConnectedComponents
 		else:
-			classConnectedComponents = properties.ConnectedComponents
+			classConnectedComponents = components.ConnectedComponents
 
 		for parameter in [
-			("Node Centrality",	"Degree",						True,	funcScores,	"Score",				centrality.DegreeCentrality, 			(G, )),
-			("Node Centrality",	"K-Core Decomposition",			True,	funcScores,	"Score",				centrality.CoreDecomposition, 			(G, )),
-			("Node Centrality",	"Local Clustering Coefficient",	True,	funcScores,	"Score",				centrality.LocalClusteringCoefficient,	(G, )),
-			("Node Centrality",	"PageRank",					True,	funcScores,	"Score",				centrality.PageRank, 					(G, )),
-			("Node Centrality",	"K-Path Centrality",			True,	funcScores,	"Score",				centrality.KPathCentrality,				(G, )),
-			("Node Centrality",	"Katz Centrality",				True,	funcScores,	"Score",				centrality.KatzCentrality,				(G, )),
-			("Node Centrality",	"Betweenness (ap.)",					True,	funcScores,	"Score",				centrality.ApproxBetweenness2,			(G, max(42, math.log(G.numberOfNodes()), True))),
-			("Node Centrality",	"Closeness",					True,	funcScores,	"Score",				centrality.ApproxCloseness,			(G, max(42, math.log(G.numberOfNodes()), True))),
-			("Partition",		"Communities",					False,	funcSizes,	"Nodes per Community",	community.PLM,			 				(G, )),
-			("Partition",		"Connected Components",			False,	funcSizes,	"Nodes per Component",	classConnectedComponents,				(G, )),
-			("Partition",		"K-Core Decomposition",			False,	funcSizes,	"Nodes per Shell",		centrality.CoreDecomposition, 			(G, ))
-		]: result.__addMeasure(parameter, exclude)
+			("Centrality.Degree",					"Node Centrality",	"Degree",
+				True,	funcScores,	"Score",				centrality.DegreeCentrality, 			(G, )),
+			("Centrality.CoreDecomposition",		"Node Centrality",	"k-Core Decomposition",
+				True,	funcScores,	"Score",				centrality.CoreDecomposition, 			(G, )),
+			("Centrality.ClusteringCoefficient",	"Node Centrality",	"Local Clustering Coefficient",
+				True,	funcScores,	"Score",				centrality.LocalClusteringCoefficient,	(G, )),
+			("Centrality.PageRank", 				"Node Centrality",	"PageRank",
+				True,	funcScores,	"Score",				centrality.PageRank, 					(G, )),
+			("Centrality.KPath", 					"Node Centrality",	"k-Path Centrality",
+				True,	funcScores,	"Score",				centrality.KPathCentrality,				(G, )),
+			("Centrality.Katz",						"Node Centrality",	"Katz Centrality",
+				True,	funcScores,	"Score",				centrality.KatzCentrality,				(G, )),
+			("Centrality.Betweenness", 				"Node Centrality",	"Betweenness",
+				True,	funcScores,	"Score",				centrality.ApproxBetweenness2,			(G, max(42, math.log(G.numberOfNodes()), True))),
+			("Centrality.Closeness",				"Node Centrality",	"Closeness",
+				True,	funcScores,	"Score",				centrality.ApproxCloseness,				(G, max(42, math.log(G.numberOfNodes()), True))),
+			("Partition.Communities", 				"Partition",		"Communities",
+				False,	funcSizes,	"Nodes per Community",	community.PLM,			 				(G, )),
+			("Partition.ConnectedComponents", 		"Partition",		"Connected Components",
+				False,	funcSizes,	"Nodes per Component",	classConnectedComponents,				(G, )),
+			("Partition.CoreDecomposition", 		"Partition",		"k-Core Decomposition",
+				False,	funcSizes,	"Nodes per Shell",		centrality.CoreDecomposition, 			(G, ))
+		]: result.__addMeasure(parameter)
 
 		if cls.__verbose:
 			timerAll = stopwatch.Timer()
 		result.__loadProperties()
-		result.__loadMeasures()
+		result.__loadMeasures(type, directory, filename)
 		if cls.__verbose:
 			if cls.__verboseLevel < 1:
 				print("")
@@ -188,28 +343,29 @@ class Profile:
 		return self.__measures[measure]["time"]
 
 
-	def output(self, type, directory, filename=None, style="light", color=(0, 0, 1), parallel=False):
-		""" TODO """
+	def output(self, outputType, directory, style="light", color=(0, 0, 1), parallel=False, token=object()):
+		""" TODO:  """
+		# TODO: type -> enum
 		options_type = ["HTML", "LaTeX", None]
 		for o in options_type:
 			if o is None:
-				raise ValueError("unknown type: options are " + str(options_type[0:len(options_type)-1]))
-			if o == type:
-				break;
+				raise ValueError("unknown output type: options are " + str(options_type[0:len(options_type)-1]))
+			if o == outputType:
+				break
 
-		if type == "LaTeX":
-			raise RuntimeError("not implemented, yet")
+		filename  = "{0}.".format(self.__G.getName())
 
 		result = self.__format(
-			type = type,
+			type = outputType,
 			directory = directory,
+			filename = filename,
 			style = style,
 			color = color,
 			pageIndex = 0,
 			parallel = parallel
 		)
 
-		if type == "HTML":
+		if outputType == "HTML":
 			js = readfile("html/profiling.js", False).replace("\\\\", "\\")
 			css = readfile("html/profiling.css", False).replace("\\\\", "\\")
 			result = """
@@ -233,13 +389,20 @@ class Profile:
 					</body>
 				</html>
 			"""
-			if filename is None:
-				filename  = "profile-{0}.html".format(self.__G.getName())
+			filename += "html"
+		elif outputType == "LaTeX":
+			result = result
+			if directory[-1] == "/":
+				directory += filename[:-1]
+			else:
+				directory += "/" + filename[:-1]
+			filename += "tex"
 		else:
 			raise Error("unknown output type")
 
 		with open(directory + "/" + filename, 'w') as file:
 			file.write(result)
+
 
 	def show(self, style="light", color=(0, 0, 1), parallel=False):
 		""" TODO: """
@@ -251,6 +414,7 @@ class Profile:
 		result = self.__format(
 			type = "HTML",
 			directory = "",
+			filename = "",
 			style = style,
 			color = color,
 			pageIndex = self.__pageCount,
@@ -261,35 +425,54 @@ class Profile:
 		self.__pageCount = self.__pageCount + 1
 
 
-	def __format(self, type, directory, style, color, pageIndex, parallel):
+	def __format(self, type, directory, filename, style, color, pageIndex, parallel):
 		""" TODO """
 		theme = plot.Theme()
 		theme.set(style, color)
+
+		if type == "HTML":
+			plottype = "SVG"
+			options = []
+		elif type == "LaTeX":
+			plottype = "PDF"
+			if directory[-1] == "/":
+				output_dir = directory + filename[:-1]
+			else:
+				output_dir = directory + "/" + filename[:-1]
+			if not os.path.isdir(output_dir):
+				os.mkdir(output_dir)
+			options = [output_dir, filename]
 
 		pool = multiprocessing.ThreadPool(self.__parallel, parallel)
 		for name in self.__measures:
 			category = self.__measures[name]["category"]
 			pool.put(
-				plot.Measure(name, (
+				plot.Measure(plottype, options, name, (
 					0,
 					self.__measures[name]["stat"],
+					category,
+					self.__measures[name]["name"],
 					self.__measures[name]["label"],
 					theme
 				))
 			)
 			pool.put(
-				plot.Measure(name, (
+				plot.Measure(plottype, options, name, (
 					1,
 					self.__measures[name]["stat"],
+					category,
+					self.__measures[name]["name"],
 					self.__measures[name]["label"],
 					theme
 				))
 			)
 			if category == "Partition":
 				pool.put(
-					plot.Measure(name, (
+					plot.Measure(plottype, options, name, (
 						2,
 						self.__measures[name]["stat"],
+						category,
+						self.__measures[name]["name"],
 						self.__measures[name]["label"],
 						theme
 					))
@@ -304,12 +487,15 @@ class Profile:
 					self.__measures[name]["image"][index] = image
 			except Exception as e:
 				self.__verbosePrint("Error (Post Processing): " + plotType + " - " + name, level=-1)
-				self.___verbosePrint(str(e), level=-1)
+				self.__verbosePrint(str(e), level=-1)
 		pool.join()
 
 		if type == "HTML":
 			templateProfile = readfile("html/profile.html", False)
 			templateMeasure = readfile("html/measure.html", False)
+		elif type == "LaTeX":
+			templateProfile = readfile("latex/profile.tex", False)
+			templateMeasure = readfile("latex/measure.tex", False)
 
 		results = {}
 		for category in self.__correlations:
@@ -322,10 +508,10 @@ class Profile:
 
 			def funcHeatMap(category, correlationName):
 				result = ""
+				keyBList = []
 
 				if type == "HTML":
 					result += "<div class=\"SubCategory HeatTable\" data-title=\"" + correlationName + "\">"
-					keyBList = []
 					for keyA in self.__measures:
 						if self.__measures[keyA]["category"] == category and self.__measures[keyA]["correlate"]:
 							keyBList.append(keyA)
@@ -334,31 +520,59 @@ class Profile:
 									value = self.__correlations[category][keyA][keyB]
 								except:
 									value = self.__correlations[category][keyB][keyA]
-								result += "<div class=\"HeatCell\" title=\"" + keyB + " - " + keyA + "\" data-heat=\"{:+.3F}\"></div>".format(value["stat"][correlationName])
-							result += "<div class=\"HeatCellName\">" + keyB + "</div><br>"
+								nameA = self.__measures[keyA]["name"]
+								nameB = self.__measures[keyB]["name"]
+								result += "<div class=\"HeatCell\" title=\"" + nameB + " - " + nameA + "\" data-heat=\"{:+.3F}\"></div>".format(value["stat"][correlationName])
+							result += "<div class=\"HeatCellName\">" + nameB + "</div><br>"
 					result += "</div>"
-
-				return result
-			results[category]["Correlations"]["HeatMaps"] += funcHeatMap(category, "Pearson's Correlation Coefficient")
-			results[category]["Correlations"]["HeatMaps"] += funcHeatMap(category, "Spearman's Rank Correlation Coefficient")
-			results[category]["Correlations"]["HeatMaps"] += funcHeatMap(category, "Fechner's Correlation Coefficient")
-
-			def funcScatterPlot(category):
-				result = ""
-
-				if type == "HTML":
-					keyBList = []
+				elif type == "LaTeX":
+					i = 0
+					n = len(self.__measures)
+					result += "\\subsection{" + correlationName + "}\n"
+					result += "\\begin{tabular}{" + ("l" * (n+1)) +"}"
 					for keyA in self.__measures:
 						if self.__measures[keyA]["category"] == category and self.__measures[keyA]["correlate"]:
 							keyBList.append(keyA)
 							for keyB in keyBList:
-								if keyA != keyB:
-									try:
-										value = self.__correlations[category][keyA][keyB]
-									except:
-										value = self.__correlations[category][keyB][keyA]
-									result += "<div class=\"Thumbnail_ScatterPlot\" data-title=\"" + keyB + "\" data-title-second=\"" + keyA + "\"><img src=\"data:image/svg+xml;utf8," + value["image"] + "\" /></div>"
+								try:
+									value = self.__correlations[category][keyA][keyB]
+								except:
+									value = self.__correlations[category][keyB][keyA]
+								nameA = self.__measures[keyA]["name"]
+								nameB = self.__measures[keyB]["name"]
+								result += "\\cellcolor{"
+								result += "red" if value["stat"][correlationName] > 0 else "blue"
+								result += "!" + str(abs(value["stat"][correlationName]) * 100)
+								result += "}"
+								result += "{:+.3F} & ".format(value["stat"][correlationName])
+							result += "\\multicolumn{" + str(n-i) + "}" + "{l}{" + nameB + "} \\\\"
+						i += 1
+					result += "\\end{tabular}"
+				return result
+			if self.__config.getMeasureCorrelation("Pearson"):
+				results[category]["Correlations"]["HeatMaps"] += funcHeatMap(category, "Pearson's Correlation Coefficient")
+			if self.__config.getMeasureCorrelation("Spearman"):
+				results[category]["Correlations"]["HeatMaps"] += funcHeatMap(category, "Spearman's Rank Correlation Coefficient")
+			if self.__config.getMeasureCorrelation("Fechner"):
+				results[category]["Correlations"]["HeatMaps"] += funcHeatMap(category, "Fechner's Correlation Coefficient")
 
+			def funcScatterPlot(category):
+				result = ""
+
+				keyBList = []
+				for keyA in self.__measures:
+					if self.__measures[keyA]["category"] == category and self.__measures[keyA]["correlate"]:
+						keyBList.append(keyA)
+						for keyB in keyBList:
+							if keyA != keyB:
+								try:
+									value = self.__correlations[category][keyA][keyB]
+								except:
+									value = self.__correlations[category][keyB][keyA]
+									if type == "HTML":
+										result += "<div class=\"Thumbnail_ScatterPlot\" data-title=\"" + keyB + "\" data-title-second=\"" + keyA + "\"><img src=\"data:image/svg+xml;utf8," + value["image"] + "\" /></div>"
+									elif type == "LaTeX":
+										result += "\n\\includegraphics[width=0.5\\textwidth]{{\"" + value["image"] + "\"}.pdf}"
 				return result
 			results[category]["Correlations"]["ScatterPlots"] += funcScatterPlot(category)
 
@@ -371,7 +585,7 @@ class Profile:
 			stat = measure["stat"]
 			assortativity = measure["assortativity"]
 			centralization = measure["centralization"]
-
+			algorithm = measure["class"].__name__
 
 			description = "N/A"
 			try:
@@ -383,6 +597,9 @@ class Profile:
 			try:
 				if type == "HTML":
 					extentions = "<div class=\"PartitionPie\"><img src=\"data:image/svg+xml;utf8," + image[2] + "\" /></div>"
+				elif type == "LaTeX":
+					extentions = "\n\\includegraphics[width=0.5\\textwidth]{{\"" + image[2] + "\"}.pdf}"
+
 			except:
 				pass
 
@@ -396,10 +613,13 @@ class Profile:
 				assortativity,
 				centralization,
 				extentions,
-				description
+				description,
+				algorithm
 			)
 			if type == "HTML":
 				results[category]["Overview"] += "<div class=\"Thumbnail_Overview\" data-title=\"" + name + "\"><a href=\"#NetworKit_Page_" + str(pageIndex) + "_" + key + "\"><img src=\"data:image/svg+xml;utf8," + image[1] + "\" /></a></div>"
+			elif type == "LaTeX":
+				results[category]["Overview"] += "\n\\includegraphics[width=0.5\\textwidth]{{\"" + image[1] + "\"}.pdf}\n"
 
 		result = self.__formatProfileTemplate(
 			templateProfile,
@@ -409,7 +629,7 @@ class Profile:
 		return result
 
 
-	def __formatMeasureTemplate(self, template, pageIndex, key, name, image, stat, assortativity, centralization, extentions, description):
+	def __formatMeasureTemplate(self, template, pageIndex, key, name, image, stat, assortativity, centralization, extentions, description, algorithm):
 		""" TODO: """
 		result = template.format(**locals())
 		return result
@@ -422,11 +642,10 @@ class Profile:
 		return result
 
 
-	def __addMeasure(self, args, exclude):
+	def __addMeasure(self, args):
 		""" TODO: """
-		(measureCategory, measureName, correlate, getter, label, measureClass, parameters) = args
-		measureKey = measureClass.__name__
-		if measureKey not in exclude:
+		(measureKey, measureCategory, measureName, correlate, getter, label, measureClass, parameters) = args
+		if self.__config.getMeasure(measureKey):
 			measure = {}
 			measure["name"] = measureName
 			measure["category"] = measureCategory
@@ -454,21 +673,57 @@ class Profile:
 		self.__properties["Weighted"] = self.__G.isWeighted()
 		self.__properties["Self Loops"] = self.__G.numberOfSelfLoops()
 
-		timerInstance = stopwatch.Timer()
-		self.__verbosePrint("Diameter: ", end="")
-		try:
-			diameter = properties.Diameter.estimatedDiameterRange(self.__G, error=0.1)
-		except:
+		if self.__config.getProperty("Diameter"):
+			try:
+				timerInstance = stopwatch.Timer()
+				self.__verbosePrint("Diameter: ", end="")
+				diameter = properties.Diameter.estimatedDiameterRange(self.__G, error=0.1)
+				elapsedMain = timerInstance.elapsed
+				self.__verbosePrint("{:.2F} s".format(elapsedMain))
+				self.__verbosePrint("")
+			except:
+				self.__verbosePrint("Diameter raised exception")
+				diameter = "N/A"
+		else:
 			diameter = "N/A"
-		elapsedMain = timerInstance.elapsed
-		self.__verbosePrint("{:.2F} s".format(elapsedMain))
-		self.__verbosePrint("")
 		self.__properties["Diameter Range"] = diameter
 
 
-	def __loadMeasures(self):
+		timerInstance = stopwatch.Timer()
+		self.__verbosePrint("Connected Components: ", end="")
+		try:
+			if self.__G.isDirected():
+				cc = components.StronglyConnectedComponents(self.__G)
+			else:
+				cc = components.ConnectedComponents(self.__G)
+			cc.run()
+			num = cc.numberOfComponents()
+		except:
+			self.__verbosePrint("ConnectedComponents raised exception")
+			num = "N/A"
+		elapsedMain = timerInstance.elapsed
+		self.__verbosePrint("{:.2F} s".format(elapsedMain))
+		self.__verbosePrint("")
+		self.__properties["Connected Components"] = num
+
+
+	def __loadMeasures(self, type, directory, filename):
 		""" TODO: """
 		pool = multiprocessing.ThreadPool(self.__parallel, False)
+
+		if type == "HTML":
+			plottype = "SVG"
+			options = []
+		elif type == "LaTeX":
+			plottype = "PDF"
+			if directory[-1] == "/":
+				output_dir = directory + filename[:-1]
+			else:
+				output_dir = directory + "/" + filename[:-1]
+			if not os.path.isdir(output_dir):
+				os.mkdir(output_dir)
+			options = [output_dir, filename]
+
 
 		for name in self.__measures:
 			measure = self.__measures[name]
@@ -480,9 +735,11 @@ class Profile:
 				self.__verbosePrint("(removed)\n>> " + str(e))
 				continue
 
+			# run algorithm and get result
 			timerInstance = stopwatch.Timer()
 			instance.run()
 			measure["data"]["sample"] = measure["getter"](instance)
+			#self.__verbosePrint("{0} called on {1}".format(measure["getter"], instance))
 			elapsedMain = timerInstance.elapsed
 			self.__verbosePrint("{:.2F} s".format(elapsedMain))
 
@@ -498,51 +755,59 @@ class Profile:
 			elapsedPostRank = timerPostRank.elapsed
 			self.__verbosePrint("{:.2F} s".format(elapsedPostRank))
 
-			self.__verbosePrint("    Assortativity: ", end="")
-			timerPostAssortativity = stopwatch.Timer()
 			if self.__measures[name]["category"] == "Node Centrality":
+				self.__verbosePrint("    Assortativity: ", end="")
+				timerPostAssortativity = stopwatch.Timer()
 				assortativity = properties.Assortativity(self.__G, measure["data"]["sample"])
 				assortativity.run()
 				measure["assortativity"] = assortativity.getCoefficient()
+				elapsedPostAssortativity = timerPostAssortativity.elapsed
+				self.__verbosePrint("{:.2F} s".format(elapsedPostAssortativity))
 			else:
 				measure["assortativity"] = float("nan")
-			elapsedPostAssortativity = timerPostAssortativity.elapsed
-			self.__verbosePrint("{:.2F} s".format(elapsedPostAssortativity))
 
-			# self.__verbosePrint("    Centralization: ", end="")
-			timerPostCentralization = stopwatch.Timer()
+
+
 			if self.__measures[name]["category"] == "Node Centrality":
+				self.__verbosePrint("    Centralization: ", end="")
+				timerPostCentralization = stopwatch.Timer()
 				try:
 					measure["centralization"] = instance.centralization()
 				except:
-					self.__verbosePrint("Centrality.centralization not properly defined for {0}".format(name), level=0)
+					self.__verbosePrint("Centrality.centralization not properly defined for {0}. ".format(name), level=0, end="")
 					measure["centralization"] = float("nan")
+				elapsedPostCentralization = timerPostCentralization.elapsed
+				self.__verbosePrint("{:.2F} s".format(elapsedPostCentralization))
 			else:
 				measure["centralization"] = float("nan")
-			elapsedPostCentralization = timerPostCentralization.elapsed
+
 
 			measure["time"] = (
 				elapsedMain,
 				elapsedPostSort,
 				elapsedPostRank,
 				elapsedPostAssortativity,
+				elapsedPostCentralization
 			)
 
 		self.__verbosePrint("")
 
 		for name in self.__measures:
-			if len(self.__measures[name]["data"]["sample"]) <= 1:
-				del self.__measures[name]
-			else:
-				category = self.__measures[name]["category"]
-				pool.put(
-					stat.Stat(name, (
-						self.__measures[name]["data"]["sample"],
-						self.__measures[name]["data"]["sorted"],
-						self.__measures[name]["data"]["ranked"],
-						category == "Partition"
-					))
-				)
+			# the fix below avoids a cake-diagram for connected graphs,
+			# as there is no other other way to include connected components for now,
+			# the detailed output for connected graphs is accepted
+			#if len(self.__measures[name]["data"]["sample"]) <= 1:	# for case connected graph...
+			#	del self.__measures[name]
+			#else:
+			category = self.__measures[name]["category"]
+			pool.put(
+				stat.Stat(name, (
+					self.__measures[name]["data"]["sample"],
+					self.__measures[name]["data"]["sorted"],
+					self.__measures[name]["data"]["ranked"],
+					category == "Partition"
+				))
+			)
 
 		while pool.numberOfTasks() > 0:
 			(type, name, data) = pool.get()
@@ -569,8 +834,10 @@ class Profile:
 								))
 							)
 							pool.put(
-								plot.Scatter(key, (
+								plot.Scatter(plottype, options, key, (
 									name,
+									self.__measures[key]["name"],
+									self.__measures[name]["name"],
 									self.__measures[key]["label"],
 									self.__measures[name]["label"],
 									self.__measures[key]["data"]["sample"],
@@ -602,15 +869,16 @@ class Profile:
 		pool.join()
 
 
-	def __verbosePrint(self, text, end="\n", level=0):
-		if self.__verboseLevel >= level:
+	@classmethod
+	def __verbosePrint(cls, text="", end="\n", level=0):
+		if cls.__verboseLevel >= level:
 			text = text + end
 		else:
 			text = "."
 
-		if self.__verbose or level < 0:
+		if cls.__verbose or level < 0:
 			print(text, end="", flush=True)
 
-		if self.__verboseFilename != "":
-			with open(self.__verboseFilename, 'a+') as file:
+		if cls.__verboseFilename != "":
+			with open(cls.__verboseFilename, 'a+') as file:
 				file.write(text)

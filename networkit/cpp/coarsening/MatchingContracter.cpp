@@ -27,12 +27,12 @@ void MatchingContracter::run() {
 		if (mate == v) DEBUG("Node ", v, " is its own matching!");
 		assert(mate != v);
 		if ((mate == none) || (v < mate)) {
-			// vertex is carried over to the new level
+			// vertex v is carried over to the new level
 			mapFineToCoarse[v] = idx;
 			++idx;
 		}
 		else {
-			// vertex is not carried over, receives ID of mate
+			// vertex v is not carried over, receives ID of mate
 			mapFineToCoarse[v] = mapFineToCoarse[mate];
 		}
 		assert(mapFineToCoarse[v] != none);
