@@ -79,7 +79,7 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) 
 	 */
 	const count k = part.numberOfSubsets();
 	const count n = part.numberOfElements();
-	vector<PrioQueue<edgeweight, index> > queues(k,0);
+	vector<PrioQueue<edgeweight, index> > queues(part.upperBound(),n);
 	vector<edgeweight> gains;
 	vector<pair<index, index> > transfers;
 	vector<index> transferedVertices;
@@ -219,9 +219,13 @@ Partition Partitioner::recursiveBisection(const Graph& g, count k) {
 
 void Partitioner::recursiveBisection(const Graph& g, count k, Partition& mask, index maskID) {
 	if (k == 1) return;
+	auto beforeMap = mask.subsetSizeMap();
+	count nodes = beforeMap.at(maskID);
+	assert(k <= nodes);
 
 	index a, b;
 	std::tie(a,b) = getMaximumDistancePair(g, mask, maskID);
+	assert(a != b);
 	const count firstWeight = k/2;
 	const count secondWeight = k - firstWeight;
 
@@ -239,6 +243,9 @@ void Partitioner::recursiveBisection(const Graph& g, count k, Partition& mask, i
 	auto map = mask.subsetSizeMap();
 	count firstRegionSize = map.at(a);
 	count secondRegionSize = map.at(b);
+
+	assert(firstRegionSize + secondRegionSize == beforeMap.at(maskID));
+
 	assert(firstRegionSize >= firstWeight);
 	assert(secondRegionSize >= secondWeight);
 
@@ -302,10 +309,10 @@ Partition Partitioner::growRegions(const Graph& g, const vector<index>& starting
 				assert(g.hasNode(nextNode));
 			} while (!bfsQueues[p].empty() && visited[nextNode]  && startingPoints[p] != nextNode);
 
-			if (visited[nextNode] && startingPoints[p] != nextNode) continue;
-
-			result.moveToSubset(startingPoints[p], nextNode);
-			visited[nextNode] = true;
+			if (!visited[nextNode]) {
+				result.moveToSubset(startingPoints[p], nextNode);
+				visited[nextNode] = true;
+			}
 
 			for (index neighbor : g.neighbors(nextNode)) {
 				if (visited[neighbor] || !constraint.inSameSubset(nextNode, neighbor)) continue;
@@ -350,6 +357,8 @@ std::pair<index, index> Partitioner::getMaximumDistancePair(const Graph& g, cons
 	index a = startingNode;
 	index b = startingNode;
 
+	bool checkedConnectedness = false;
+
 	while (maxDistance > lastDistance) {
 		a = b;
 		lastDistance = maxDistance;
@@ -381,6 +390,17 @@ std::pair<index, index> Partitioner::getMaximumDistancePair(const Graph& g, cons
 				maxDistance = distances[currentNode];
 			}
 		}
+
+		if (!checkedConnectedness) {
+			for (index v : constraint.getMembers(constraint[startingNode])) {
+				if (!visited[v]) {
+					//partition is disconnected!
+					return {a, v};
+				}
+			}
+			checkedConnectedness = true;
+		}
+
 	}
 
 	assert(GraphDistance().unweightedDistance(g, a,b) == maxDistance);
