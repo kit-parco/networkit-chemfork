@@ -10,7 +10,7 @@
 namespace NetworKit {
 
 MatchingContracter::MatchingContracter(const Graph& G, const Matching& M, bool noSelfLoops) : GraphCoarsening(G), M(M), noSelfLoops(noSelfLoops) {
-
+	if (G.isDirected()) throw std::runtime_error("Only defined for undirected graphs.");
 }
 
 void MatchingContracter::run() {
@@ -48,7 +48,7 @@ void MatchingContracter::run() {
 		G.forNeighborsOf(v, [&](node u, edgeweight ew) {
 			node cv = mapFineToCoarse[v];
 			node cu = mapFineToCoarse[u];
-			if (! noSelfLoops || (cv != cu)) {
+			if ((v <= u) && (! noSelfLoops || (cv != cu))) {
 				cG.increaseWeight(cv, cu, ew);
 			}
 		});

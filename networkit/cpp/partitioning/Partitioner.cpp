@@ -22,7 +22,11 @@ using Aux::PrioQueue;
 
 namespace NetworKit {
 
-Partitioner::Partitioner(const Graph& G, count numParts) : Algorithm(), G(G), numParts(numParts), result(0) {
+Partitioner::Partitioner(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively) : Algorithm(), G(G), numParts(numParts), charged(false), maxImbalance(maxImbalance), bisectRecursively(bisectRecursively), result(0) {
+	if (G.numberOfSelfLoops() > 0) throw std::runtime_error("Graph must not have self-loops.");
+}
+
+Partitioner::Partitioner(const Graph& G, const vector<index>& chargedVertices, double maxImbalance, bool bisectRecursively) : Algorithm(), G(G), numParts(chargedVertices.size()), chargedNodes(chargedVertices), charged(true), maxImbalance(maxImbalance), bisectRecursively(bisectRecursively), result(0) {
 	if (G.numberOfSelfLoops() > 0) throw std::runtime_error("Graph must not have self-loops.");
 }
 
@@ -30,7 +34,8 @@ void Partitioner::run() {
 
 	std::function<Partition(const Graph&)> partitionLambda = [&](const Graph& g) -> Partition {
 	   count n = g.numberOfNodes();
-	   DEBUG("Partitioning graph with ", n, " nodes into ", numParts, " parts.");
+	   count m = g.numberOfEdges();
+	   DEBUG("Partitioning graph with ", n, " nodes, ", m, " edges and total edge weight ",  g.totalEdgeWeight() , " into ", numParts, " parts.");
 
 	   // coarsen recursively until graph is small enough
 	   if (n <= 2 * numParts) {
@@ -82,10 +87,10 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) 
 	/**
 	 * allocate data structures
 	 */
-	const count k = part.numberOfSubsets();
 	const count n = part.numberOfElements();
 	const auto subsetIds = part.getSubsetIds();
 	vector<index> bestTargetPartition(g.upperNodeIdBound());
+	std::map<index, count> partitionSizes = part.subsetSizeMap();
 	vector<PrioQueue<edgeweight, index> > queues(part.upperBound(),n);
 	vector<edgeweight> gains;
 	vector<pair<index, index> > transfers;
@@ -93,7 +98,7 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) 
 	edgeweight total = g.totalEdgeWeight();
 
 	/**
-	 * fill priority queues
+	 * fill priority queues. Since we want to access the nodes with the maximum gain first but have only minQueues available, we use the negative gain as priority.
 	 */
 	part.forEntries([total, &g, &part, &queues, &subsetIds, &bestTargetPartition](index node, index clusterID){
 		assert(g.hasNode(node));
@@ -108,7 +113,7 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) 
 		}
 		bestTargetPartition[node] = IdAtMax;
 		assert(clusterID < queues.size());
-		queues[clusterID].insert(maxGain, node);
+		queues[clusterID].insert(-maxGain, node); //negative max gain
 	});
 
 	count queuedSum = 0;
@@ -125,23 +130,45 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) 
 
 	vector<bool> moved(g.upperNodeIdBound(), false);
 
-
 	while (!allQueuesEmpty) {
 		allQueuesEmpty = true;
+
+		//choose largest partition with non-empty queue.
+		int largestMovablePart = -1;
+		count largestSize = 0;
+
 		for (index partID : subsetIds) {
+			if (queues[partID].size() > 0 && partitionSizes[partID] > largestSize) {
+				largestMovablePart = partID;
+				largestSize = partitionSizes[partID];
+			}
+		}
+
+		if (largestMovablePart != -1) {
+			//at least one queue is not empty
+			allQueuesEmpty = false;
+			index partID = largestMovablePart;
+
 			assert(partID < queues.size());
-			if (queues[partID].size() == 0) continue; //nothing to move here, queue is empty
+			//if (queues[partID].size() == 0) continue; //nothing to move here, queue is empty
+
 			index topVertex;
 			double topGain;
 			std::tie(topGain, topVertex) = queues[partID].extractMin();
+			topGain = -topGain;//invert, since the negative gain was used as priority.
 
-			index IdAtMax = bestTargetPartition[topVertex];
 			//now get target partition.
+			index IdAtMax = bestTargetPartition[topVertex];
+			assert(calculateGain(g, part, topVertex, IdAtMax) == topGain);
 
 			//move node there
 			TRACE("Moved node ", topVertex, " to partition ", IdAtMax, " for gain of ", topGain);
 			part.moveToSubset(IdAtMax, topVertex);
 			moved[topVertex] = true;
+
+			//udpate size map
+			partitionSizes[partID]--;
+			partitionSizes[IdAtMax]++;
 
 			//update history
 			gainsum += topGain;
@@ -166,12 +193,11 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) 
 
 					//update prioqueue
 					queues[part[w]].remove(w);
-					queues[part[w]].insert(newMaxGain, w);
+					queues[part[w]].insert(-newMaxGain, w);
 
 				}
 			});
 
-			allQueuesEmpty = false;
 		}
 	}
 
