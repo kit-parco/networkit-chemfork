@@ -24,7 +24,8 @@ class Partitioner : public Algorithm {
 	friend class PartitionerGTest;
 
 public:
-	Partitioner(const Graph& G, count numParts = 10);
+	Partitioner(const Graph& G, count numParts = 10, double maxImbalance = 10, bool bisectRecursivelyForInitialPartitioning = true);
+	Partitioner(const Graph& G, const std::vector<index>& chargedVertices, double maxImbalance = 10, bool bisectRecursivelyForInitialPartitioning = true);
 	virtual ~Partitioner() = default;
 
 	/**
@@ -59,6 +60,10 @@ protected:
 
 	const Graph& G;
 	const count numParts;
+	const std::vector<index> chargedNodes;
+	const bool charged;
+	const double maxImbalance;
+	const bool bisectRecursively;
 	Partition result;
 
 };
