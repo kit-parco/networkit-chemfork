@@ -300,6 +300,11 @@ public:
 	 */
 	edgeweight calculateCutWeight(const Graph& G);
 
+	/**
+	 *
+	 */
+	double getImbalance(count desiredPartitions);
+
 
 	/**
 	 * Set a human-readable identifier @a name for the instance.

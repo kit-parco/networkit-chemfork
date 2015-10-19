@@ -11,6 +11,7 @@
 #include "../../graph/Graph.h"
 #include "../../Globals.h"
 #include "../../generators/BarabasiAlbertGenerator.h"
+#include "../../io/METISGraphReader.h"
 
 namespace NetworKit {
 
@@ -42,12 +43,48 @@ TEST_F(PartitionerGTest, testGainUnweighted) {
 	EXPECT_EQ(-1, Partitioner::calculateGain(G, part, 1, secondPartition));
 }
 
-TEST_F(PartitionerGTest, testPartitioner) {
-	BarabasiAlbertGenerator gen(10, 1000, 10);
+TEST_F(PartitionerGTest, testRegionGrowing) {
 
-	Graph G = gen.generate();
-	Partitioner part(G, 10);
+}
+
+TEST_F(PartitionerGTest, testRecursiveBisection) {
+
+}
+
+TEST_F(PartitionerGTest, testChargedNodes) {
+
+}
+
+TEST_F(PartitionerGTest, testPartitioner) {
+	//const count n = 10000;
+	BarabasiAlbertGenerator gen(10, 10000, 10);
+	Graph G =  gen.generate();
+
+	const count targetK = 10;
+
+
+	//Graph G = METISGraphReader().read("input/caidaRouterLevel.graph");
+	count n = G.numberOfNodes();
+	Partitioner part(G, targetK);
 	part.run();
+	Partition result = part.getPartition();
+	DEBUG("Resulted in ", result.numberOfSubsets(), " partitions, with a cut of weight ", result.calculateCutWeight(G));
+	auto map = result.subsetSizeMap();
+
+	double averageSize = n / targetK;
+	double variance = 0;
+	double maxImbalance = 0;
+
+	for (auto entry : map) {
+		DEBUG("Partition ", entry.first, " of size ", entry.second);
+		variance += std::abs(entry.second - averageSize);
+		double imbalance = std::abs(entry.second - averageSize) / averageSize;
+		if (maxImbalance < imbalance) maxImbalance = imbalance;
+	}
+	variance += (targetK - result.numberOfSubsets())*averageSize; //missing partitions have a cardinality of zero
+	if (targetK > result.numberOfSubsets() && maxImbalance < 1) maxImbalance = 1;
+	DEBUG("Variance of sizes is ", variance / targetK, " imbalance is ", maxImbalance);
+
 }
 
 }//end namespace NetworKit
