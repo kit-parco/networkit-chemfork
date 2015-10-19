@@ -34,8 +34,16 @@ void Partitioner::run() {
 
 	   // coarsen recursively until graph is small enough
 	   if (n <= 2 * numParts) {
-		   Partition initial = recursiveBisection(g, numParts);
+		   Partition initial;
+		   //initial = recursiveBisection(g, numParts);
 
+		   vector<index> startingPoints(numParts);
+		   for (index i = 0; i < numParts; i++) {
+			   startingPoints[i] = g.randomNode();
+		   }
+		   initial = growRegions(g, startingPoints);
+
+		   DEBUG("Initial solution has ", initial.numberOfSubsets(), " partitions, a cut of ", initial.calculateCutWeight(g), " and an imbalance of ", initial.getImbalance(numParts));
 		   return initial;
 	   }
 	   else {
@@ -60,6 +68,8 @@ void Partitioner::run() {
 		   do {
 			    gain = fiducciaMatheysesStep(g, finePart);
 		   } while (gain > 0);
+
+		   DEBUG("After refinement, solution has ", finePart.numberOfSubsets(), " partitions, a cut of ", finePart.calculateCutWeight(g), " and an imbalance of ", finePart.getImbalance(numParts));
 
 		   return finePart;
 	   }
