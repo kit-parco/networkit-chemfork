@@ -63,6 +63,30 @@ TEST_F(PartitionerGTest, testGainRandomGraph) {
 	}
 }
 
+TEST_F(PartitionerGTest, testFMOnRealGraphAndRandomPartition) {
+	METISGraphReader reader;
+	Graph G = reader.read("input/bacteriorhodopsin-10-2.5.graph");
+
+	const count k = 10;
+
+	ClusteringGenerator clusterGen;
+	Partition part = clusterGen.makeRandomClustering(G, k);
+	edgeweight cut = part.calculateCutWeight(G);
+
+	edgeweight gainsum = 0;
+	edgeweight gain;
+	do {
+		gain = Partitioner::fiducciaMatheysesStep(G, part);
+		gainsum += gain;
+		DEBUG("Found gain ", gain, " in FM-step with ", G.numberOfNodes(), " nodes and ", part.numberOfSubsets(), " partitions.");
+	} while (gain > 0);
+	EXPECT_EQ(0, gain);
+	edgeweight newcut = part.calculateCutWeight(G);
+	EXPECT_NEAR(cut, newcut + gainsum, 0.001);
+	DEBUG("Final cut weight: ", newcut);
+	EXPECT_EQ(k, part.numberOfSubsets());
+}
+
 TEST_F(PartitionerGTest, testPartitionerOnRealGraphWithChargedNodes) {
 	/**
 	 * read in Graph
@@ -107,6 +131,8 @@ TEST_F(PartitionerGTest, testPartitionerOnRealGraphWithChargedNodes) {
 	part.run();
 	Partition result = part.getPartition();
 
+	EXPECT_EQ(targetK, result.numberOfSubsets());
+
 	/**
 	 * check if charged nodes are in different partitions
 	 */
@@ -118,31 +144,32 @@ TEST_F(PartitionerGTest, testPartitionerOnRealGraphWithChargedNodes) {
 }
 
 TEST_F(PartitionerGTest, testPartitionerOnBarabasiAlbert) {
+	/**
+	 * generate graph
+	 */
 	BarabasiAlbertGenerator gen(10, 5000, 10);
 	Graph G =  gen.generate();
 
 	const count targetK = 10;
+	const double maxImbalance = 0.1;
 
-	count n = G.numberOfNodes();
-	Partitioner part(G, targetK);
+	/**
+	 * call partitioner
+	 */
+	Partitioner part(G, targetK, maxImbalance);
 	part.run();
 	Partition result = part.getPartition();
+
+	/**
+	 * check results
+	 */
 	DEBUG("Resulted in ", result.numberOfSubsets(), " partitions, with a cut of weight ", result.calculateCutWeight(G));
+	EXPECT_EQ(targetK, result.numberOfSubsets());
+
 	auto map = result.subsetSizeMap();
+	double measuredImbalance = result.getImbalance(targetK);
 
-	double averageSize = n / targetK;
-	double variance = 0;
-	double maxImbalance = 0;
-
-	for (auto entry : map) {
-		DEBUG("Partition ", entry.first, " of size ", entry.second);
-		variance += std::abs(entry.second - averageSize);
-		double imbalance = std::abs(entry.second - averageSize) / averageSize;
-		if (maxImbalance < imbalance) maxImbalance = imbalance;
-	}
-	variance += (targetK - result.numberOfSubsets())*averageSize; //missing partitions have a cardinality of zero
-	if (targetK > result.numberOfSubsets() && maxImbalance < 1) maxImbalance = 1;
-	DEBUG("Variance of sizes is ", variance / targetK, " imbalance is ", maxImbalance);
+	EXPECT_LE(measuredImbalance, maxImbalance);
 
 }
 
@@ -152,26 +179,33 @@ TEST_F(PartitionerGTest, testPartitionerOnRealGraph) {
 
 	const count targetK = 10;
 
-	count n = G.numberOfNodes();
-	Partitioner part(G, targetK);
+	const count n = G.numberOfNodes();
+	const double maxImbalance = 0.1;
+
+	Partitioner part(G, targetK, maxImbalance);
 	part.run();
 	Partition result = part.getPartition();
-	DEBUG("Resulted in ", result.numberOfSubsets(), " partitions, with a cut of weight ", result.calculateCutWeight(G));
+	edgeweight cutWeight = result.calculateCutWeight(G);
+	DEBUG("Resulted in ", result.numberOfSubsets(), " partitions, with a cut of weight ", cutWeight);
+	EXPECT_EQ(targetK, result.numberOfSubsets());
+
 	auto map = result.subsetSizeMap();
+	double measuredImbalance = result.getImbalance(targetK);
 
-	double averageSize = n / targetK;
-	double variance = 0;
-	double maxImbalance = 0;
+	EXPECT_LE(measuredImbalance, maxImbalance);
 
-	for (auto entry : map) {
-		DEBUG("Partition ", entry.first, " of size ", entry.second);
-		variance += std::abs(entry.second - averageSize);
-		double imbalance = std::abs(entry.second - averageSize) / averageSize;
-		if (maxImbalance < imbalance) maxImbalance = imbalance;
+	/**
+	 * compare with naive partition
+	 */
+	Partition naive(n);
+	naive.setUpperBound(n);
+	for (index i = 0; i < n; i++) {
+		index clusterID =  (i * targetK) / n;
+		naive[i] = clusterID;
 	}
-	variance += (targetK - result.numberOfSubsets())*averageSize; //missing partitions have a cardinality of zero
-	if (targetK > result.numberOfSubsets() && maxImbalance < 1) maxImbalance = 1;
-	DEBUG("Variance of sizes is ", variance / targetK, " imbalance is ", maxImbalance);
+	ASSERT_EQ(targetK, naive.numberOfSubsets());
+	edgeweight naivecut = naive.calculateCutWeight(G);
+	EXPECT_LT(cutWeight, naivecut);
 }
 
 }//end namespace NetworKit
