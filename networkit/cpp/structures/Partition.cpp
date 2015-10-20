@@ -181,6 +181,7 @@ std::set<index> Partition::getSubsetIds() const {
 }
 
 edgeweight Partition::calculateCutWeight(const Graph& G) {
+	assert(G.numberOfNodes() == numberOfElements());
 	edgeweight result = 0;
 	G.forEdges([&](index u, index v){
 		if (!inSameSubset(u,v)) {
