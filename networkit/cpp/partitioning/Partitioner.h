@@ -24,8 +24,9 @@ class Partitioner : public Algorithm {
 	friend class PartitionerGTest;
 
 public:
-	Partitioner(const Graph& G, count numParts = 10, double maxImbalance = 10, bool bisectRecursivelyForInitialPartitioning = true);
-	Partitioner(const Graph& G, const std::vector<index>& chargedVertices, double maxImbalance = 10, bool bisectRecursivelyForInitialPartitioning = true);
+	Partitioner(const Graph& G, count numParts = 10, double maxImbalance = 10, bool bisectRecursivelyForInitialPartitioning = true, const std::vector<index>& chargedVertices = {});
+
+	//Partitioner(const Graph& G, const std::vector<index>& chargedVertices, double maxImbalance = 10, bool bisectRecursivelyForInitialPartitioning = true);
 	virtual ~Partitioner() = default;
 
 	/**
@@ -47,7 +48,8 @@ public:
 	static edgeweight calculateGain(const Graph& g, const Partition& input, index v, index targetPart);
 
 protected:
-	edgeweight fiducciaMatheysesStep(const Graph& G, Partition& input);
+	static Partition partitionRecursively(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const std::vector<index>& chargedVertices);
+	static edgeweight fiducciaMatheysesStep(const Graph& G, Partition& input);
 	static Partition recursiveBisection(const Graph& g, count k);
 	static void recursiveBisection(const Graph& g, count k, Partition& input, index maskID);
 
@@ -60,10 +62,10 @@ protected:
 
 	const Graph& G;
 	const count numParts;
-	const std::vector<index> chargedNodes;
 	const bool charged;
 	const double maxImbalance;
 	const bool bisectRecursively;
+	const std::vector<index> chargedNodes;
 	Partition result;
 
 };

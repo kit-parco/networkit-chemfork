@@ -22,65 +22,104 @@ using Aux::PrioQueue;
 
 namespace NetworKit {
 
-Partitioner::Partitioner(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively) : Algorithm(), G(G), numParts(numParts), charged(false), maxImbalance(maxImbalance), bisectRecursively(bisectRecursively), result(0) {
+Partitioner::Partitioner(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const vector<index>& chargedVertices) : Algorithm(), G(G), numParts(numParts), charged(chargedVertices.size() > 0), maxImbalance(maxImbalance), bisectRecursively(bisectRecursively), chargedNodes(chargedVertices), result(0) {
 	if (G.numberOfSelfLoops() > 0) throw std::runtime_error("Graph must not have self-loops.");
-}
-
-Partitioner::Partitioner(const Graph& G, const vector<index>& chargedVertices, double maxImbalance, bool bisectRecursively) : Algorithm(), G(G), numParts(chargedVertices.size()), chargedNodes(chargedVertices), charged(true), maxImbalance(maxImbalance), bisectRecursively(bisectRecursively), result(0) {
-	if (G.numberOfSelfLoops() > 0) throw std::runtime_error("Graph must not have self-loops.");
+	if (chargedNodes.size() > numParts) throw std::runtime_error("Cannot have more charged nodes than partitions.");
+	if (maxImbalance < 1) throw std::runtime_error("Maximum Imbalance must be at least 1");
+	if (bisectRecursively && charged) throw std::runtime_error("If using charged nodes, use region growing for the initial graph.");
+	for (index i : chargedVertices) {
+		if (!G.hasNode(i)) throw std::runtime_error("Node supplied as charged node is not present in the graph.");
+	}
 }
 
 void Partitioner::run() {
 
-	std::function<Partition(const Graph&)> partitionLambda = [&](const Graph& g) -> Partition {
-	   count n = g.numberOfNodes();
-	   count m = g.numberOfEdges();
-	   DEBUG("Partitioning graph with ", n, " nodes, ", m, " edges and total edge weight ",  g.totalEdgeWeight() , " into ", numParts, " parts.");
+	/**
+	 * todo: adapt partition lambda to use starting nodes for region growing as argument, coarsen them appropriately
+	 */
 
-	   // coarsen recursively until graph is small enough
-	   if (n <= 2 * numParts) {
-		   Partition initial;
-		   //initial = recursiveBisection(g, numParts);
-
-		   vector<index> startingPoints(numParts);
-		   for (index i = 0; i < numParts; i++) {
-			   startingPoints[i] = g.randomNode();
-		   }
-		   initial = growRegions(g, startingPoints);
-
-		   DEBUG("Initial solution has ", initial.numberOfSubsets(), " partitions, a cut of ", initial.calculateCutWeight(g), " and an imbalance of ", initial.getImbalance(numParts));
-		   return initial;
-	   }
-	   else {
-		   // recursive coarsening
-		   LocalMaxMatcher matcher(g);
-		   Matching matching = matcher.run();
-		   assert(matching.isProper(g));
-		   MatchingContracter coarsener(g, matching);
-		   coarsener.run();
-		   Graph coarseG = coarsener.getCoarseGraph();
-		   std::vector<node> fineToCoarse = coarsener.getNodeMapping();
-
-		   // recursive call
-		   Partition coarsePart = partitionLambda(coarseG);
-
-		   // interpolation
-		   ClusteringProjector projector;
-		   Partition finePart = projector.projectBack(coarseG, g, fineToCoarse, coarsePart);
-
-		   // local refinement with Fiduccia-Matheyses
-		   edgeweight gain;
-		   do {
-			    gain = fiducciaMatheysesStep(g, finePart);
-		   } while (gain > 0);
-
-		   DEBUG("After refinement, solution has ", finePart.numberOfSubsets(), " partitions, a cut of ", finePart.calculateCutWeight(g), " and an imbalance of ", finePart.getImbalance(numParts));
-
-		   return finePart;
-	   }
-   };
-	result = partitionLambda(G);
+	result = partitionRecursively(G, numParts, maxImbalance, bisectRecursively, chargedNodes);
 	hasRun = true;
+}
+
+Partition Partitioner::partitionRecursively(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const std::vector<index>& chargedVertices) {
+	count n = G.numberOfNodes();
+	count m = G.numberOfEdges();
+	DEBUG("Partitioning graph with ", n, " nodes, ", m, " edges and total edge weight ",  G.totalEdgeWeight() , " into ", numParts, " parts.");
+
+	// coarsen recursively until graph is small enough
+	if (n <= 2 * numParts) {
+	   Partition initial;
+	   if (bisectRecursively) {
+		   initial = recursiveBisection(G, numParts);
+	   } else {
+		   vector<index> startingPoints(chargedVertices);
+		   startingPoints.resize(numParts);
+
+		   for (index i = chargedVertices.size(); i < numParts; i++) {
+				bool present;
+				index stIndex;
+				do {
+					/**
+					 * sample random index. If already present, sample again.
+					 */
+					stIndex = Aux::Random::index(n);
+					present = false;
+					for (index j = 0; j < i; j++) {
+						if (startingPoints[j] == stIndex) {
+							present = true;
+						}
+					}
+				} while (present);
+				startingPoints[i] = stIndex;
+			}
+		   initial = growRegions(G, startingPoints);
+	   }
+
+	   DEBUG("Initial solution has ", initial.numberOfSubsets(), " partitions, a cut of ", initial.calculateCutWeight(G), " and an imbalance of ", initial.getImbalance(numParts));
+	   return initial;
+	}
+	else {
+	   // recursive coarsening
+	   LocalMaxMatcher matcher(G);
+	   Matching matching = matcher.run();
+	   assert(matching.isProper(G));
+	   MatchingContracter coarsener(G, matching);
+	   coarsener.run();
+	   Graph coarseG = coarsener.getCoarseGraph();
+	   std::vector<node> fineToCoarse = coarsener.getNodeMapping();
+
+
+	   // map charged vertices to coarser nodes
+	   vector<index> coarseCharged;
+	   for (node v : chargedVertices) {
+		   coarseCharged.push_back(fineToCoarse[v]);
+	   }
+
+	   // recursive call
+	   Partition coarsePart = partitionRecursively(coarseG, numParts, maxImbalance, bisectRecursively, coarseCharged);
+
+	   // interpolation
+	   ClusteringProjector projector;
+	   Partition finePart = projector.projectBack(coarseG, G, fineToCoarse, coarsePart);
+
+	   edgeweight preRefinementCut = finePart.calculateCutWeight(G);
+
+	   // local refinement with Fiduccia-Matheyses
+	   edgeweight gain;
+	   do {
+			gain = fiducciaMatheysesStep(G, finePart);
+			assert(gain == gain);
+			TRACE("Found gain ", gain, " in FM-step with ", G.numberOfNodes(), " nodes and ", finePart.numberOfSubsets(), " partitions.");
+	   } while (gain > 0);
+	   assert(gain == 0);
+	   edgeweight postRefinementCut = finePart.calculateCutWeight(G);
+	   assert(postRefinementCut <= preRefinementCut);
+
+	   DEBUG("After refinement, solution for ", G.numberOfNodes(), " nodes has ", finePart.numberOfSubsets(), " partitions, a cut of ", finePart.calculateCutWeight(G), " and an imbalance of ", finePart.getImbalance(numParts));
+
+	   return finePart;
+	}
 }
 
 edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) {
@@ -206,8 +245,6 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) 
 	count testedNodes = gains.size();
 	assert(testedNodes == n);
 
-
-
 	/**
 	 * now find best partition among those tested
 	 */
@@ -216,15 +253,27 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) 
 		if (gains[i] > gains[maxIndex]) maxIndex = i;
 	}
 
+	int loopStop;
+	edgeweight result;
+	if (gains[maxIndex] < 0) {
+		/**
+		 * all was for naught! Reverse everything.
+		 */
+		loopStop = -1;
+	} else {
+		loopStop = maxIndex;
+	}
+
 	/**
 	 * apply partition modifications in reverse until best is recovered
 	 */
-	for (int i = n-1; i > maxIndex; i--) {
+	for (int i = n-1; i > loopStop; i--) {
 		assert(part[transferedVertices[i]] == transfers[i].second);
 		TRACE("Reversing move of ", transferedVertices[i], " from ", transfers[i].second, " back to ", transfers[i].first);
 		part.moveToSubset(transfers[i].first, transferedVertices[i]);
 	}
-	return gains[maxIndex];
+	result = loopStop == -1 ? 0 : gains[maxIndex];
+	return result;
 }
 
 edgeweight Partitioner::calculateGain(const Graph& g, const Partition& input, index u, index targetPart) {
