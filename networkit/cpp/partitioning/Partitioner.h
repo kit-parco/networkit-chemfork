@@ -46,10 +46,11 @@ public:
 	virtual std::string toString() const;
 
 	static edgeweight calculateGain(const Graph& g, const Partition& input, index v, index targetPart);
+	static edgeweight fiducciaMatheysesStep(const Graph& G, Partition& input);
+
 
 protected:
 	static Partition partitionRecursively(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const std::vector<index>& chargedVertices);
-	static edgeweight fiducciaMatheysesStep(const Graph& G, Partition& input);
 	static Partition recursiveBisection(const Graph& g, count k);
 	static void recursiveBisection(const Graph& g, count k, Partition& input, index maskID);
 

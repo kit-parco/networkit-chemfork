@@ -25,7 +25,6 @@ namespace NetworKit {
 Partitioner::Partitioner(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const vector<index>& chargedVertices) : Algorithm(), G(G), numParts(numParts), charged(chargedVertices.size() > 0), maxImbalance(maxImbalance), bisectRecursively(bisectRecursively), chargedNodes(chargedVertices), result(0) {
 	if (G.numberOfSelfLoops() > 0) throw std::runtime_error("Graph must not have self-loops.");
 	if (chargedNodes.size() > numParts) throw std::runtime_error("Cannot have more charged nodes than partitions.");
-	if (maxImbalance < 1) throw std::runtime_error("Maximum Imbalance must be at least 1");
 	if (bisectRecursively && charged) throw std::runtime_error("If using charged nodes, use region growing for the initial graph.");
 	for (index i : chargedVertices) {
 		if (!G.hasNode(i)) throw std::runtime_error("Node supplied as charged node is not present in the graph.");
@@ -33,11 +32,6 @@ Partitioner::Partitioner(const Graph& G, count numParts, double maxImbalance, bo
 }
 
 void Partitioner::run() {
-
-	/**
-	 * todo: adapt partition lambda to use starting nodes for region growing as argument, coarsen them appropriately
-	 */
-
 	result = partitionRecursively(G, numParts, maxImbalance, bisectRecursively, chargedNodes);
 	hasRun = true;
 }
@@ -189,7 +183,6 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) 
 			index partID = largestMovablePart;
 
 			assert(partID < queues.size());
-			//if (queues[partID].size() == 0) continue; //nothing to move here, queue is empty
 
 			index topVertex;
 			double topGain;
