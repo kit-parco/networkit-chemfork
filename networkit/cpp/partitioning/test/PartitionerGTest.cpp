@@ -171,7 +171,7 @@ TEST_F(PartitionerGTest, testPartitionerOnRealGraphWithChargedNodes) {
 	 */
 	for (index i = 0; i < numCharged; i++) {
 		for (index j = 0; j < i; j++) {
-			EXPECT_NE(result[i], result[j]);
+			EXPECT_NE(result[charged[i]], result[charged[j]]);
 		}
 	}
 }
