@@ -50,6 +50,9 @@ Partition Partitioner::partitionRecursively(const Graph& G, count numParts, doub
 		   vector<index> startingPoints(chargedVertices);
 		   startingPoints.resize(numParts);
 
+		   /**
+		    * fill up starting points with random other points
+		    */
 		   for (index i = chargedVertices.size(); i < numParts; i++) {
 				bool present;
 				index stIndex;
@@ -356,6 +359,7 @@ Partition Partitioner::growRegions(const Graph& g, const vector<index>& starting
 	 */
 	const count n = g.numberOfNodes();
 	const count z = g.upperNodeIdBound();
+	const count k = startingPoints.size();
 	assert(startingPoints.size() <= n);
 	assert(startingPoints.size() == weights.size());
 	assert(constraint.numberOfElements() == n);
@@ -400,10 +404,8 @@ Partition Partitioner::growRegions(const Graph& g, const vector<index>& starting
 			} while (!bfsQueues[p].empty() && visited[nextNode]  && startingPoints[p] != nextNode);
 
 			if (visited[nextNode] && !(startingPoints[p] == nextNode)) continue;
-			//if (!visited[nextNode]) {
 				result.moveToSubset(startingPoints[p], nextNode);
 				visited[nextNode] = true;
-			//}
 
 			for (index neighbor : g.neighbors(nextNode)) {
 				if (visited[neighbor] || !constraint.inSameSubset(nextNode, neighbor)) continue;
@@ -414,7 +416,7 @@ Partition Partitioner::growRegions(const Graph& g, const vector<index>& starting
 		}
 	}
 
-	//TODO: check that all nodes have been visited
+	//g.forNodes([&visited](index v){assert(visited[v]);});
 	return result;
 }
 

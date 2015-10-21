@@ -87,6 +87,39 @@ TEST_F(PartitionerGTest, testFMOnRealGraphAndRandomPartition) {
 	EXPECT_EQ(k, part.numberOfSubsets());
 }
 
+TEST_F(PartitionerGTest, testRegionGrowingOnRealGraph) {
+	METISGraphReader reader;
+	Graph G = reader.read("input/bacteriorhodopsin-10-2.5.graph");
+
+	const count k = 10;
+	const count n = G.numberOfNodes();
+
+	/**
+	 * prepare random starting nodes
+	 */
+	std::vector<index> startingNodes(k);
+	for (index i = 0; i < k; i++) {
+		bool present;
+		index chIndex;
+		do {
+			/**
+			 * sample random index. If already present, sample again.
+			 */
+			chIndex = Aux::Random::index(n);
+			present = false;
+			for (index j = 0; j < i; j++) {
+				if (startingNodes[j] == chIndex) {
+					present = true;
+				}
+			}
+		} while (present);
+		startingNodes[i] = chIndex;
+	}
+
+	Partition part = Partitioner::growRegions(G, startingNodes);
+	EXPECT_EQ(k, part.numberOfSubsets());
+}
+
 TEST_F(PartitionerGTest, testPartitionerOnRealGraphWithChargedNodes) {
 	/**
 	 * read in Graph
@@ -147,7 +180,7 @@ TEST_F(PartitionerGTest, testPartitionerOnBarabasiAlbert) {
 	/**
 	 * generate graph
 	 */
-	BarabasiAlbertGenerator gen(10, 5000, 10);
+	BarabasiAlbertGenerator gen(10, 2000, 10);
 	Graph G =  gen.generate();
 
 	const count targetK = 10;
