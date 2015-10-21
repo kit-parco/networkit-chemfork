@@ -24,10 +24,13 @@ namespace NetworKit {
 class LocalMaxMatcher: public NetworKit::Matcher {
 public:
 
-	LocalMaxMatcher(const Graph& G);
+	LocalMaxMatcher(const Graph& G, const std::vector<index> chargedVertices = {});
 
 
 	virtual Matching run();
+
+protected:
+	const std::vector<index> chargedVertices;
 };
 
 } /* namespace NetworKit */
