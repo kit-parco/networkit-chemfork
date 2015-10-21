@@ -285,6 +285,20 @@ TEST_F(PartitionGTest, testNumberOfElements) {
 	EXPECT_EQ(n, p.numberOfElements());
 }
 
+TEST_F(PartitionGTest, testImbalance) {
+	count n = 10;
+	Partition p(n);
+	p.allToSingletons();
+	EXPECT_EQ(0, p.getImbalance(10));
+	EXPECT_EQ(1, p.getImbalance(20));
+	for (index i = 0; i < n; i++) {
+		if (i < n/2) p.moveToSubset(0, i);
+		else p.moveToSubset(1, i);
+	}
+	EXPECT_EQ(0, p.getImbalance(2));
+	p.moveToSubset(1, 0);
+	EXPECT_NEAR(0.2, p.getImbalance(2), 0.001);
+}
 
 
 
