@@ -9,7 +9,7 @@
 
 namespace NetworKit {
 
-LocalMaxMatcher::LocalMaxMatcher(const Graph& graph): Matcher(graph)
+LocalMaxMatcher::LocalMaxMatcher(const Graph& graph, const std::vector<index> chargedVertices): Matcher(graph), chargedVertices(chargedVertices)
 {
 
 }
@@ -46,6 +46,12 @@ Matching LocalMaxMatcher::run() {
 		candidates[u].t = u; // itself as mating partner => unmatched
 	});
 
+	//note charged nodes
+	std::vector<bool> charged(z, false);
+	for (index c : chargedVertices) {
+		charged[c] = true;
+	}
+
 	while (E > 0) {
 		// for each edge find out if it is locally maximum
 		for (auto edge: edges) {
@@ -61,7 +67,7 @@ Matching LocalMaxMatcher::run() {
 		for (auto edge: edges) {
 			node u = edge.s;
 			node v = edge.t;
-			if (candidates[u].t == v && candidates[v].t == u && u != v) {
+			if (candidates[u].t == v && candidates[v].t == u && u != v && (!charged[u] || !charged[v])) {
 				// both nodes agree
 				M.match(u, v);
 			}
@@ -71,7 +77,7 @@ Matching LocalMaxMatcher::run() {
 		// adjust candidates
 		std::vector<MyEdge> newEdges;
 		for (auto edge: edges) {
-			if (! M.isMatched(edge.s) && ! M.isMatched(edge.t) && edge.s != edge.t) {
+			if (! M.isMatched(edge.s) && ! M.isMatched(edge.t) && edge.s != edge.t && (!charged[edge.s] || !charged[edge.t])) {
 				newEdges.push_back(edge);
 				candidates[edge.s].w = (edgeweight) 0;
 				candidates[edge.t].w = (edgeweight) 0;

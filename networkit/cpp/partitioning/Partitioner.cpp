@@ -78,7 +78,7 @@ Partition Partitioner::partitionRecursively(const Graph& G, count numParts, doub
 	}
 	else {
 	   // recursive coarsening
-	   LocalMaxMatcher matcher(G);
+	   LocalMaxMatcher matcher(G, chargedVertices);
 	   Matching matching = matcher.run();
 	   assert(matching.isProper(G));
 	   MatchingContracter coarsener(G, matching);
@@ -366,6 +366,15 @@ Partition Partitioner::growRegions(const Graph& g, const vector<index>& starting
 	for (index point : startingPoints) assert(g.hasNode(point));
 
 	/**
+	 * make sure starting points are unique
+	 */
+	for (index i = 0; i < k; i++) {
+		for (index j = 0; j < i; j++) {
+			assert(startingPoints[i] != startingPoints[j]);
+		}
+	}
+
+	/**
 	 * allocate data structures
 	 */
 	vector<bool> visited(z, false);
@@ -395,20 +404,21 @@ Partition Partitioner::growRegions(const Graph& g, const vector<index>& starting
 			if (bfsQueues[p].empty()) continue;
 			allQueuesEmpty = false;
 
-			index nextNode;
+			index currentNode;
 
 			do {
-				nextNode = bfsQueues[p].front();
+				currentNode = bfsQueues[p].front();
 				bfsQueues[p].pop();
-				assert(g.hasNode(nextNode));
-			} while (!bfsQueues[p].empty() && visited[nextNode]  && startingPoints[p] != nextNode);
+				assert(g.hasNode(currentNode));
+			} while (!bfsQueues[p].empty() && visited[currentNode]  && startingPoints[p] != currentNode);
 
-			if (visited[nextNode] && !(startingPoints[p] == nextNode)) continue;
-				result.moveToSubset(startingPoints[p], nextNode);
-				visited[nextNode] = true;
+			if (visited[currentNode] && !(startingPoints[p] == currentNode)) continue;
 
-			for (index neighbor : g.neighbors(nextNode)) {
-				if (visited[neighbor] || !constraint.inSameSubset(nextNode, neighbor)) continue;
+			result.moveToSubset(startingPoints[p], currentNode);
+			visited[currentNode] = true;
+
+			for (index neighbor : g.neighbors(currentNode)) {
+				if (visited[neighbor] || !constraint.inSameSubset(currentNode, neighbor)) continue;
 
 				//if not visited and in same partition
 				bfsQueues[p].push(neighbor);
