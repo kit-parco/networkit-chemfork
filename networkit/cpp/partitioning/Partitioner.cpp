@@ -105,7 +105,7 @@ Partition Partitioner::partitionRecursively(const Graph& G, count numParts, doub
 	   // local refinement with Fiduccia-Matheyses
 	   edgeweight gain;
 	   do {
-			gain = fiducciaMatheysesStep(G, finePart);
+			gain = fiducciaMatheysesStep(G, finePart, chargedVertices);
 			assert(gain == gain);
 			TRACE("Found gain ", gain, " in FM-step with ", G.numberOfNodes(), " nodes and ", finePart.numberOfSubsets(), " partitions.");
 	   } while (gain > 0);
@@ -119,30 +119,42 @@ Partition Partitioner::partitionRecursively(const Graph& G, count numParts, doub
 	}
 }
 
-edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) {
+edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part, const std::vector<index> chargedVertices) {
 	/**
 	 * allocate data structures
 	 */
 	const count n = part.numberOfElements();
+	const count z = g.upperNodeIdBound();
 	const auto subsetIds = part.getSubsetIds();
-	vector<index> bestTargetPartition(g.upperNodeIdBound());
+	vector<index> bestTargetPartition(z);
 	std::map<index, count> partitionSizes = part.subsetSizeMap();
 	vector<PrioQueue<edgeweight, index> > queues(part.upperBound(),n);
 	vector<edgeweight> gains;
 	vector<pair<index, index> > transfers;
 	vector<index> transferedVertices;
 	edgeweight total = g.totalEdgeWeight();
+	vector<bool> charged(z, false);
+	vector<bool> chargedPart(part.upperBound(), false);
+
+	/**
+	 * mark which partitions are charged already
+	 */
+	for (index c : chargedVertices) {
+		charged[c] = true;
+		chargedPart[part[c]] = true;
+	}
+
 
 	/**
 	 * fill priority queues. Since we want to access the nodes with the maximum gain first but have only minQueues available, we use the negative gain as priority.
 	 */
-	part.forEntries([total, &g, &part, &queues, &subsetIds, &bestTargetPartition](index node, index clusterID){
+	part.forEntries([total, &g, &part, &queues, &subsetIds, &bestTargetPartition, &charged, &chargedPart](index node, index clusterID){
 		assert(g.hasNode(node));
 		edgeweight maxGain = -total;
 		index IdAtMax = 0;
 		for (index otherSubset : subsetIds) {
 			edgeweight thisgain = calculateGain(g, part, node, otherSubset);
-			if (thisgain > maxGain && otherSubset != clusterID) {
+			if (thisgain > maxGain && otherSubset != clusterID && (!chargedPart[otherSubset] || !charged[node])) {
 				IdAtMax = otherSubset;
 				maxGain = thisgain;
 			}
@@ -159,7 +171,7 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) 
 	assert(queuedSum == n);
 
 	/**
-	 * iterate over all vertices,
+	 * iterate over all vertices and move them, as long as unmoved vertices are left
 	 */
 	edgeweight gainsum = 0;
 	bool allQueuesEmpty = false;
@@ -205,6 +217,12 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) 
 			partitionSizes[partID]--;
 			partitionSizes[IdAtMax]++;
 
+			//update charge state
+			if (charged[topVertex]) {
+				chargedPart[partID] = false;
+				chargedPart[IdAtMax] = true;
+			}
+
 			//update history
 			gainsum += topGain;
 			gains.push_back(gainsum);
@@ -212,14 +230,14 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part) 
 			transferedVertices.push_back(topVertex);
 
 			//update gains of neighbours
-			g.forNeighborsOf(topVertex, [&g, topVertex, partID, total, &queues, &part, &subsetIds, &moved, &bestTargetPartition](index w){
+			g.forNeighborsOf(topVertex, [&g, topVertex, partID, total, &queues, &part, &subsetIds, &moved, &bestTargetPartition, &charged, &chargedPart](index w){
 				if (!moved[w]) {
 					//update gain
 					edgeweight newMaxGain = -total;
 					index IdAtMax = 0;
 					for (index otherSubset : subsetIds) {
 						edgeweight thisgain = calculateGain(g, part, w, otherSubset);
-						if (thisgain > newMaxGain && otherSubset != part[w]) {
+						if (thisgain > newMaxGain && otherSubset != part[w] &&  (!chargedPart[otherSubset] || !charged[w])) {
 							newMaxGain = thisgain;
 							IdAtMax = otherSubset;
 						}
