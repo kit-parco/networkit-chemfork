@@ -193,15 +193,12 @@ edgeweight Partition::calculateCutWeight(const Graph& G) {
 
 double Partition::getImbalance(count desiredPartitions) {
 	double maxImbalance = 0;
-	double variance = 0;
 	double averageSize = numberOfElements() / desiredPartitions;
 	for (auto entry : subsetSizeMap()) {
-		variance += std::abs(entry.second - averageSize);
 		double imbalance = std::abs(entry.second - averageSize) / averageSize;
 		if (maxImbalance < imbalance) maxImbalance = imbalance;
 	}
 
-	variance += (desiredPartitions - numberOfSubsets())*averageSize; //missing partitions have a cardinality of zero
 	if (desiredPartitions > numberOfSubsets() && maxImbalance < 1) maxImbalance = 1;
 	return maxImbalance;
 }
