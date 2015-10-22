@@ -24,7 +24,7 @@ class Partitioner : public Algorithm {
 	friend class PartitionerGTest;
 
 public:
-	Partitioner(const Graph& G, count numParts = 10, double maxImbalance = 10, bool bisectRecursivelyForInitialPartitioning = false, const std::vector<index>& chargedVertices = {});
+	Partitioner(const Graph& G, count numParts = 10, double maxImbalance = 2, bool bisectRecursivelyForInitialPartitioning = false, const std::vector<index>& chargedVertices = {});
 
 	//Partitioner(const Graph& G, const std::vector<index>& chargedVertices, double maxImbalance = 10, bool bisectRecursivelyForInitialPartitioning = true);
 	virtual ~Partitioner() = default;
@@ -51,6 +51,7 @@ public:
 	static Partition growRegions(const Graph& g, const std::vector<index>& startingPoints, const std::vector<count>& weights, const Partition& constraint);
 
 protected:
+	static void enforceBalance(const Graph& G, Partition& part, double maxImbalance = 0.03, const std::vector<index>& chargedVertices = {});
 	static Partition partitionRecursively(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const std::vector<index>& chargedVertices);
 	static Partition recursiveBisection(const Graph& g, count k);
 	static void recursiveBisection(const Graph& g, count k, Partition& input, index maskID);

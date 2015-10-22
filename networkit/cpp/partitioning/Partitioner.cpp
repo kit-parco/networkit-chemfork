@@ -14,6 +14,7 @@
 #include "../auxiliary/Random.h"
 
 #include "../graph/GraphDistance.h"
+#include "../community/ClusteringGenerator.h"
 
 using std::vector;
 using std::pair;
@@ -27,7 +28,7 @@ Partitioner::Partitioner(const Graph& G, count numParts, double maxImbalance, bo
 	if (chargedNodes.size() > numParts) throw std::runtime_error("Cannot have more charged nodes than partitions.");
 	if (bisectRecursively && charged) throw std::runtime_error("If using charged nodes, use region growing for the initial graph.");
 	for (index i : chargedVertices) {
-		if (!G.hasNode(i)) throw std::runtime_error("Node supplied as charged node is not present in the graph.");
+		if (!G.hasNode(i)) throw std::runtime_error("At least one of the charged nodes is missing from the graph.");
 	}
 }
 
@@ -44,36 +45,40 @@ Partition Partitioner::partitionRecursively(const Graph& G, count numParts, doub
 	// coarsen recursively until graph is small enough
 	if (n <= 2 * numParts) {
 	   Partition initial;
-	   if (bisectRecursively) {
-		   initial = recursiveBisection(G, numParts);
-	   } else {
-		   vector<index> startingPoints(chargedVertices);
-		   startingPoints.resize(numParts);
+//	   if (bisectRecursively) {
+//		   initial = recursiveBisection(G, numParts);
+//	   } else {
+//		   vector<index> startingPoints(chargedVertices);
+//		   startingPoints.resize(numParts);
+//
+//		   /**
+//		    * fill up starting points with random other points
+//		    */
+//		   for (index i = chargedVertices.size(); i < numParts; i++) {
+//				bool present;
+//				index stIndex;
+//				do {
+//					/**
+//					 * sample random index. If already present, sample again.
+//					 */
+//					stIndex = Aux::Random::index(n);
+//					present = false;
+//					for (index j = 0; j < i; j++) {
+//						if (startingPoints[j] == stIndex) {
+//							present = true;
+//						}
+//					}
+//				} while (present);
+//				startingPoints[i] = stIndex;
+//			}
+//		   initial = growRegions(G, startingPoints);
+//	   }
 
-		   /**
-		    * fill up starting points with random other points
-		    */
-		   for (index i = chargedVertices.size(); i < numParts; i++) {
-				bool present;
-				index stIndex;
-				do {
-					/**
-					 * sample random index. If already present, sample again.
-					 */
-					stIndex = Aux::Random::index(n);
-					present = false;
-					for (index j = 0; j < i; j++) {
-						if (startingPoints[j] == stIndex) {
-							present = true;
-						}
-					}
-				} while (present);
-				startingPoints[i] = stIndex;
-			}
-		   initial = growRegions(G, startingPoints);
-	   }
+	   ClusteringGenerator gen;
+	   initial = gen.makeContinuousBalancedClustering(G, numParts);
 
-	   DEBUG("Initial solution has ", initial.numberOfSubsets(), " partitions, a cut of ", initial.calculateCutWeight(G), " and an imbalance of ", initial.getImbalance(numParts));
+	   count initialK = initial.numberOfSubsets();
+	   DEBUG("Initial solution has ", initialK, " partitions, a cut of ", initial.calculateCutWeight(G), " and an imbalance of ", initial.getImbalance(numParts));
 	   return initial;
 	}
 	else {
@@ -100,7 +105,17 @@ Partition Partitioner::partitionRecursively(const Graph& G, count numParts, doub
 	   ClusteringProjector projector;
 	   Partition finePart = projector.projectBack(coarseG, G, fineToCoarse, coarsePart);
 
+	   edgeweight preBalancingCut = finePart.calculateCutWeight(G);
+	   double preBalancingImbalance = finePart.getImbalance(numParts);
+	   count preBalancingK = finePart.numberOfSubsets();
+
+	   enforceBalance(G, finePart, maxImbalance, chargedVertices);
+
 	   edgeweight preRefinementCut = finePart.calculateCutWeight(G);
+	   double preRefinementImbalance = finePart.getImbalance(numParts);
+	   count preRefinementK = finePart.numberOfSubsets();
+
+		DEBUG("Rebalancing, n: ", n, ", cut: ", preBalancingCut, "->", preRefinementCut, ", imbalance:", preBalancingImbalance, "->", preRefinementImbalance);
 
 	   // local refinement with Fiduccia-Matheyses
 	   edgeweight gain;
@@ -113,13 +128,19 @@ Partition Partitioner::partitionRecursively(const Graph& G, count numParts, doub
 	   edgeweight postRefinementCut = finePart.calculateCutWeight(G);
 	   assert(postRefinementCut <= preRefinementCut);
 
-	   DEBUG("After refinement, solution for ", G.numberOfNodes(), " nodes has ", finePart.numberOfSubsets(), " partitions, a cut of ", finePart.calculateCutWeight(G), " and an imbalance of ", finePart.getImbalance(numParts));
+	   DEBUG("Refinement, n: ", G.numberOfNodes(), " k: ", preRefinementK, "->", finePart.numberOfSubsets(), ", cut: ", preRefinementCut, "->", postRefinementCut, ", imbalance:", preRefinementImbalance, "->", finePart.getImbalance(numParts));
 
 	   return finePart;
 	}
 }
 
 edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part, const std::vector<index> chargedVertices) {
+	/**
+	 * magic numbers
+	 */
+	const count KarypisKumarStoppingCriterion = 20;
+	count movesWithoutImprovement = 0;
+
 	/**
 	 * allocate data structures
 	 */
@@ -135,6 +156,7 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part, 
 	edgeweight total = g.totalEdgeWeight();
 	vector<bool> charged(z, false);
 	vector<bool> chargedPart(part.upperBound(), false);
+
 
 	/**
 	 * mark which partitions are charged already
@@ -228,6 +250,16 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part, 
 			gains.push_back(gainsum);
 			transfers.emplace_back(partID, IdAtMax);
 			transferedVertices.push_back(topVertex);
+
+			//update counter and possibly abort early
+			if (topGain > 0) {
+				movesWithoutImprovement = 0;
+			} else {
+				movesWithoutImprovement++;
+				if (movesWithoutImprovement > KarypisKumarStoppingCriterion) {
+					//break;//out of while-loop
+				}
+			}
 
 			//update gains of neighbours
 			g.forNeighborsOf(topVertex, [&g, topVertex, partID, total, &queues, &part, &subsetIds, &moved, &bestTargetPartition, &charged, &chargedPart](index w){
@@ -384,6 +416,11 @@ Partition Partitioner::growRegions(const Graph& g, const vector<index>& starting
 	for (index point : startingPoints) assert(g.hasNode(point));
 
 	/**
+	 * partition should be balanced
+	 */
+	const count maxPartSize = ceil(n / k);
+
+	/**
 	 * make sure starting points are unique
 	 */
 	for (index i = 0; i < k; i++) {
@@ -396,7 +433,10 @@ Partition Partitioner::growRegions(const Graph& g, const vector<index>& starting
 	 * allocate data structures
 	 */
 	vector<bool> visited(z, false);
-	vector<queue<index>> bfsQueues(startingPoints.size());
+	vector<queue<index>> bfsQueues(k);
+	vector<count> partitionSizes(k, 0);
+
+	//partitions already present in the input are copied
 	Partition result(constraint);
 	result.setUpperBound(std::max(*std::max_element(startingPoints.begin(), startingPoints.end())+1, constraint.upperBound()));
 
@@ -419,7 +459,7 @@ Partition Partitioner::growRegions(const Graph& g, const vector<index>& starting
 	while (!allQueuesEmpty) {
 		allQueuesEmpty = true;
 		for (index p = 0; p < bfsQueues.size(); p++) {
-			if (bfsQueues[p].empty()) continue;
+			if (bfsQueues[p].empty()) continue; //here one could also check whether the partition has already reached its alloted size
 			allQueuesEmpty = false;
 
 			index currentNode;
@@ -434,6 +474,7 @@ Partition Partitioner::growRegions(const Graph& g, const vector<index>& starting
 
 			result.moveToSubset(startingPoints[p], currentNode);
 			visited[currentNode] = true;
+			partitionSizes[p]++;
 
 			for (index neighbor : g.neighbors(currentNode)) {
 				if (visited[neighbor] || !constraint.inSameSubset(currentNode, neighbor)) continue;
@@ -444,6 +485,7 @@ Partition Partitioner::growRegions(const Graph& g, const vector<index>& starting
 		}
 	}
 
+	//TODO: make sure that all nodes in this subpartition have been visited
 	//g.forNodes([&visited](index v){assert(visited[v]);});
 	return result;
 }
@@ -515,7 +557,10 @@ std::pair<index, index> Partitioner::getMaximumDistancePair(const Graph& g, cons
 		if (!checkedConnectedness) {
 			for (index v : constraint.getMembers(constraint[startingNode])) {
 				if (!visited[v]) {
-					//partition is disconnected!
+					/**
+					 * partition is disconnected!
+					 * The distance between a and all nodes in the other component is infinity, we can just return any of them.
+					 */
 					return {a, v};
 				}
 			}
@@ -528,6 +573,171 @@ std::pair<index, index> Partitioner::getMaximumDistancePair(const Graph& g, cons
 	return {a, b};
 }
 
+void Partitioner::enforceBalance(const Graph& G, Partition& part, double maxImbalance, const vector<index>& chargedVertices) {
+	const count n = G.numberOfNodes();
+	const count z = G.upperNodeIdBound();
+	const count k = part.numberOfSubsets();
+	assert(part.numberOfElements() == n);
 
+	/**
+	 * if the number of nodes is not divisible by the number of partitions, a perfect balance is impossible.
+	 * To avoid an endless loop, compute the theoretical minimum imbalance and adjust the parameter if necessary.
+	 */
+	const double epsilon = 0.000001;//to handle floating point issues
+	const double minImbalance = std::max(ceil(double(n)/k) / (double(n)/k) - 1, 1 - floor(double(n)/k) / (double(n)/k) );
+	const double permittableImbalance = std::max(minImbalance, maxImbalance) + epsilon;
+
+	/**
+	 * allocate data structures similar to FM
+	 */
+	std::vector<PrioQueue<edgeweight, index> > queues(part.upperBound(),n);
+	const auto subsetIds = part.getSubsetIds();
+	vector<index> bestTargetPartition(z);
+	std::map<index, count> partitionSizes = part.subsetSizeMap();
+	const edgeweight total = G.totalEdgeWeight();
+	vector<bool> charged(z, false);
+	vector<bool> chargedPart(part.upperBound(), false);
+	vector<bool> moved(G.upperNodeIdBound(), false);
+
+
+	/**
+	 * mark which partitions are charged already
+	 */
+	for (index c : chargedVertices) {
+		charged[c] = true;
+		chargedPart[part[c]] = true;
+	}
+
+
+	/**
+	 * save values before rebalancing to compare
+	 */
+	double currentImbalance = part.getImbalance(k);
+
+	/**
+	 * repeat until partitions are balanced
+	 */
+	while(currentImbalance > permittableImbalance) {
+		/**
+		 * reset priority queues
+		 */
+		for (auto queue : queues) {
+			queue.clear();
+		}
+
+		/**
+		 * reset moved status
+		 */
+		moved.clear();
+		moved.resize(z, false);
+
+		/**
+		 * Fill priority queues.
+		 * Since we want to access the nodes with the maximum gain first but have only minQueues available, we use the negative gain as priority.
+		 */
+		part.forEntries([total, &G, &part, &queues, &subsetIds, &bestTargetPartition, &charged, &chargedPart, &partitionSizes](index node, index clusterID){
+			assert(G.hasNode(node));
+			edgeweight maxGain = -total;
+			index IdAtMax = 0;
+			for (index otherSubset : subsetIds) {
+				edgeweight thisgain = calculateGain(G, part, node, otherSubset);
+				if (thisgain > maxGain && otherSubset != clusterID && (!chargedPart[otherSubset] || !charged[node]) && partitionSizes[otherSubset] + 1 < partitionSizes[clusterID]) {
+					IdAtMax = otherSubset;
+					maxGain = thisgain;
+				}
+			}
+			bestTargetPartition[node] = IdAtMax;
+			assert(clusterID < queues.size());
+			queues[clusterID].insert(-maxGain, node); //negative max gain
+		});
+
+		/**
+		 * main movement loop
+		 */
+		bool allQueuesEmpty = false;
+		while(!allQueuesEmpty) {
+			allQueuesEmpty = true;
+
+			//choose largest partition with non-empty queue.
+			int largestMovablePart = -1;
+			count largestSize = 0;
+
+			for (index partID : subsetIds) {
+				if (queues[partID].size() > 0 && partitionSizes[partID] > largestSize) {
+					largestMovablePart = partID;
+					largestSize = partitionSizes[partID];
+				}
+			}
+
+			if (largestMovablePart != -1) {
+				index p = largestMovablePart;
+				allQueuesEmpty = false;
+				while(queues[p].size() > 0) {
+
+					/**
+					 * the loop content is copied almost verbatim from the FM-algorithm
+					 */
+
+					index topVertex;
+					double topGain;
+					std::tie(topGain, topVertex) = queues[p].extractMin();
+					assert(!moved[topVertex]);
+					topGain = -topGain;//invert, since the negative gain was used as priority.
+
+					if (topGain == -total) continue;//could not be moved anywhere
+
+					//now get target partition.
+					index IdAtMax = bestTargetPartition[topVertex];
+					assert(calculateGain(G, part, topVertex, IdAtMax) == topGain);
+
+					count ownSize = partitionSizes[p];
+					count targetSize = partitionSizes[IdAtMax];
+
+					if (targetSize >= ownSize) continue; //wouldn't make any sense to move, now would it?
+
+					part.moveToSubset(IdAtMax, topVertex);
+					moved[topVertex] = true;
+
+					DEBUG("Node moved, Imbalance now ", part.getImbalance(k));
+
+					//udpate size map
+					partitionSizes[p]--;
+					partitionSizes[IdAtMax]++;
+
+					//update charge state
+					if (charged[topVertex]) {
+						chargedPart[p] = false;
+						chargedPart[IdAtMax] = true;
+					}
+
+					//update gains of neighbours
+					G.forNeighborsOf(topVertex, [&G, topVertex, p, total, &queues, &part, &subsetIds, &bestTargetPartition, &charged, &chargedPart, &partitionSizes, &moved](index w){
+						if (!moved[w]) {
+							//update gain
+							edgeweight newMaxGain = -total;
+							index IdAtMax = 0;
+							for (index otherSubset : subsetIds) {
+								edgeweight thisgain = calculateGain(G, part, w, otherSubset);
+								if (thisgain > newMaxGain && otherSubset != part[w] &&  (!chargedPart[otherSubset] || !charged[w]) && partitionSizes[otherSubset] + 1 < partitionSizes[part[w]]) {
+									newMaxGain = thisgain;
+									IdAtMax = otherSubset;
+								}
+							}
+							bestTargetPartition[w] = IdAtMax;
+
+							//update prioqueue
+							queues[part[w]].remove(w);
+							queues[part[w]].insert(-newMaxGain, w);
+						}
+					});
+				}
+			}
+		}
+		double oldImbalance = currentImbalance;
+		currentImbalance = part.getImbalance(k);
+		DEBUG("Imbalance reduced ", oldImbalance, "->", currentImbalance);
+
+	}
+}
 
 } /* namespace NetworKit */

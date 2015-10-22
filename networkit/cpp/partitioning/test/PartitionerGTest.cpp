@@ -222,7 +222,6 @@ TEST_F(PartitionerGTest, testPartitionerOnRealGraph) {
 	DEBUG("Resulted in ", result.numberOfSubsets(), " partitions, with a cut of weight ", cutWeight);
 	EXPECT_EQ(targetK, result.numberOfSubsets());
 
-	auto map = result.subsetSizeMap();
 	double measuredImbalance = result.getImbalance(targetK);
 
 	EXPECT_LE(measuredImbalance, maxImbalance);
@@ -230,15 +229,45 @@ TEST_F(PartitionerGTest, testPartitionerOnRealGraph) {
 	/**
 	 * compare with naive partition
 	 */
-	Partition naive(n);
-	naive.setUpperBound(n);
-	for (index i = 0; i < n; i++) {
-		index clusterID =  (i * targetK) / n;
-		naive[i] = clusterID;
-	}
+	ClusteringGenerator gen;
+	Partition naive = gen.makeContinuousBalancedClustering(G, targetK);
+
 	ASSERT_EQ(targetK, naive.numberOfSubsets());
 	edgeweight naivecut = naive.calculateCutWeight(G);
 	EXPECT_LT(cutWeight, naivecut);
+}
+
+TEST_F(PartitionerGTest, testPartitionerNaiveComparisonRealGraph) {
+	METISGraphReader reader;
+	Graph G = reader.read("input/bacteriorhodopsin-10-2.5.graph");
+
+	const count targetK = 10;
+
+	const count n = G.numberOfNodes();
+	const double maxImbalance = 0.1;
+
+	Partitioner part(G, targetK, maxImbalance);
+	part.run();
+	Partition result = part.getPartition();
+	edgeweight cutWeight = result.calculateCutWeight(G);
+	DEBUG("Resulted in ", result.numberOfSubsets(), " partitions, with a cut of weight ", cutWeight);
+	EXPECT_EQ(targetK, result.numberOfSubsets());
+
+	/**
+	 * compare with naive partition and refinement step
+	 */
+	ClusteringGenerator gen;
+	Partition naive = gen.makeContinuousBalancedClustering(G, targetK);
+
+	edgeweight gain;
+	do {
+		gain = Partitioner::fiducciaMatheysesStep(G, naive);
+		assert(gain == gain);
+		DEBUG("Found gain ", gain, " in FM-step with ", G.numberOfNodes(), " nodes and ", naive.numberOfSubsets(), " partitions.");
+	} while (gain > 0);
+
+	edgeweight cutNaiveFM = naive.calculateCutWeight(G);
+	EXPECT_LE(cutWeight, cutNaiveFM);
 }
 
 }//end namespace NetworKit
