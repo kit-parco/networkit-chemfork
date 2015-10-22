@@ -120,7 +120,7 @@ Partition Partitioner::partitionRecursively(const Graph& G, count numParts, doub
 	   // local refinement with Fiduccia-Matheyses
 	   edgeweight gain;
 	   do {
-			gain = fiducciaMatheysesStep(G, finePart, chargedVertices);
+			gain = fiducciaMatheysesStep(G, finePart, maxImbalance, chargedVertices);
 			assert(gain == gain);
 			TRACE("Found gain ", gain, " in FM-step with ", G.numberOfNodes(), " nodes and ", finePart.numberOfSubsets(), " partitions.");
 	   } while (gain > 0);
@@ -134,7 +134,7 @@ Partition Partitioner::partitionRecursively(const Graph& G, count numParts, doub
 	}
 }
 
-edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part, const std::vector<index> chargedVertices) {
+edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part, double maxImbalance, const std::vector<index> chargedVertices) {
 	/**
 	 * magic numbers
 	 */
@@ -146,6 +146,7 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part, 
 	 */
 	const count n = part.numberOfElements();
 	const count z = g.upperNodeIdBound();
+	const count k = part.numberOfSubsets();
 	const auto subsetIds = part.getSubsetIds();
 	vector<index> bestTargetPartition(z);
 	std::map<index, count> partitionSizes = part.subsetSizeMap();
@@ -157,6 +158,19 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part, 
 	vector<bool> charged(z, false);
 	vector<bool> chargedPart(part.upperBound(), false);
 
+	/**
+	 * if the number of nodes is not divisible by the number of partitions, a perfect balance is impossible.
+	 * To avoid an endless loop, compute the theoretical minimum imbalance and adjust the parameter if necessary.
+	 */
+	const double avgSize = double(n) / k;
+	const double epsilon = 0.000001;//to handle floating point issues
+	const double minImbalance = std::max(ceil(avgSize) / avgSize - 1, 1 - floor(avgSize) / avgSize );
+	const double permittableImbalance = std::max(minImbalance, maxImbalance) + epsilon;
+
+	const count maxAllowablePartSize = avgSize*(1+permittableImbalance);
+	const count minAllowablePartSize = permittableImbalance >= 1 ? 0 : ceil(avgSize*(1-permittableImbalance));
+	assert(maxAllowablePartSize >= avgSize);
+	assert(minAllowablePartSize <= avgSize);
 
 	/**
 	 * mark which partitions are charged already
@@ -214,7 +228,7 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part, 
 			}
 		}
 
-		if (largestMovablePart != -1) {
+		if (largestSize > minAllowablePartSize && largestMovablePart != -1) {
 			//at least one queue is not empty
 			allQueuesEmpty = false;
 			index partID = largestMovablePart;
@@ -286,16 +300,17 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part, 
 		}
 	}
 
-	g.forNodes([&moved](index v){assert(moved[v]);});
+	//g.forNodes([&moved](index v){assert(moved[v]);});
 
 	count testedNodes = gains.size();
-	assert(testedNodes == n);
+	if (testedNodes == 0) return 0;
+	//assert(testedNodes == n);
 
 	/**
 	 * now find best partition among those tested
 	 */
 	int maxIndex = 0;
-	for (index i = 0; i < n; i++) {
+	for (index i = 0; i < testedNodes; i++) {
 		if (gains[i] > gains[maxIndex]) maxIndex = i;
 	}
 
@@ -313,7 +328,7 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part, 
 	/**
 	 * apply partition modifications in reverse until best is recovered
 	 */
-	for (int i = n-1; i > loopStop; i--) {
+	for (int i = testedNodes-1; i > loopStop; i--) {
 		assert(part[transferedVertices[i]] == transfers[i].second);
 		TRACE("Reversing move of ", transferedVertices[i], " from ", transfers[i].second, " back to ", transfers[i].first);
 		part.moveToSubset(transfers[i].first, transferedVertices[i]);
