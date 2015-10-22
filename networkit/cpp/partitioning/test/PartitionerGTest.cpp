@@ -13,6 +13,7 @@
 #include "../../generators/BarabasiAlbertGenerator.h"
 #include "../../generators/HyperbolicGenerator.h"
 #include "../../io/METISGraphReader.h"
+#include "../../io/PartitionReader.h"
 #include "../../community/ClusteringGenerator.h"
 
 namespace NetworKit {
@@ -61,6 +62,24 @@ TEST_F(PartitionerGTest, testGainRandomGraph) {
 		EXPECT_EQ(cut, newcut + gain);
 		cut = newcut;
 	}
+}
+
+TEST_F(PartitionerGTest, testFMOnContractedBarabasiAlbert) {
+	METISGraphReader reader;
+	Graph G = reader.read("input/intermediate.graph");
+	const count n = G.numberOfNodes();
+
+	PartitionReader partReader;
+	Partition part = partReader.read("input/intermediate.part");
+	const count k = part.numberOfSubsets();
+	ASSERT_EQ(n, part.numberOfElements());
+
+	edgeweight gain;
+	do {
+		gain = Partitioner::fiducciaMatheysesStep(G, part);
+		DEBUG("Found gain ", gain, " in FM-step with ", G.numberOfNodes(), " nodes and ", part.numberOfSubsets(), " partitions.");
+	} while (gain > 0);
+	EXPECT_EQ(k, part.numberOfSubsets());
 }
 
 TEST_F(PartitionerGTest, testFMOnRealGraphAndRandomPartition) {
@@ -218,6 +237,7 @@ TEST_F(PartitionerGTest, testPartitionerOnRealGraph) {
 	Partitioner part(G, targetK, maxImbalance);
 	part.run();
 	Partition result = part.getPartition();
+	EXPECT_EQ(n, result.numberOfElements());
 	edgeweight cutWeight = result.calculateCutWeight(G);
 	DEBUG("Resulted in ", result.numberOfSubsets(), " partitions, with a cut of weight ", cutWeight);
 	EXPECT_EQ(targetK, result.numberOfSubsets());
