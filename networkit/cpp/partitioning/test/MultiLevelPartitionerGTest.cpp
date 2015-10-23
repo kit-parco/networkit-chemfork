@@ -278,6 +278,8 @@ TEST_F(MultiLevelPartitionerGTest, testPartitionerNaiveComparisonRealGraph) {
 	 */
 	ClusteringGenerator gen;
 	Partition naive = gen.makeContinuousBalancedClustering(G, targetK);
+	edgeweight cutNaive = naive.calculateCutWeight(G);
+	double imbalanceNaive = naive.getImbalance(targetK);
 
 	edgeweight gain;
 	do {
@@ -287,6 +289,8 @@ TEST_F(MultiLevelPartitionerGTest, testPartitionerNaiveComparisonRealGraph) {
 	} while (gain > 0);
 
 	edgeweight cutNaiveFM = naive.calculateCutWeight(G);
+	double imbalanceNaiveFM = naive.getImbalance(targetK);
+	DEBUG("Naive Partition, cut: ", cutNaive, "->", cutNaiveFM, ", imbalance: ", imbalanceNaive, "->", imbalanceNaiveFM);
 	EXPECT_LE(cutWeight, cutNaiveFM);
 }
 
