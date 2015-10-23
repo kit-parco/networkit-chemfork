@@ -1,13 +1,13 @@
 /*
- * PartitionerGTest.cpp
+ * MultiLevelPartitionerGTest.cpp
  *
  *  Created on: 15.10.2015
  *      Author: moritzl
  */
 
-#include "PartitionerGTest.h"
+#include "MultiLevelPartitionerGTest.h"
 
-#include "../Partitioner.h"
+#include "../MultiLevelPartitioner.h"
 #include "../../graph/Graph.h"
 #include "../../Globals.h"
 #include "../../generators/BarabasiAlbertGenerator.h"
@@ -18,7 +18,7 @@
 
 namespace NetworKit {
 
-TEST_F(PartitionerGTest, testGainUnweighted) {
+TEST_F(MultiLevelPartitionerGTest, testGainUnweighted) {
 	Graph G(6);
 	G.addEdge(0,1);
 	G.addEdge(0,2);
@@ -42,11 +42,11 @@ TEST_F(PartitionerGTest, testGainUnweighted) {
 
 	EXPECT_EQ(3, part.calculateCutWeight(G));
 
-	EXPECT_EQ(0, Partitioner::calculateGain(G, part, 3, secondPartition));
-	EXPECT_EQ(-1, Partitioner::calculateGain(G, part, 1, secondPartition));
+	EXPECT_EQ(0, MultiLevelPartitioner::calculateGain(G, part, 3, secondPartition));
+	EXPECT_EQ(-1, MultiLevelPartitioner::calculateGain(G, part, 1, secondPartition));
 }
 
-TEST_F(PartitionerGTest, testGainRandomGraph) {
+TEST_F(MultiLevelPartitionerGTest, testGainRandomGraph) {
 	const count k = 10;
 	Graph H = HyperbolicGenerator(1000, 6).generate();
 	ClusteringGenerator clusterGen;
@@ -56,7 +56,7 @@ TEST_F(PartitionerGTest, testGainRandomGraph) {
 	for (index i = 0; i < 100; i++) {
 		index v = H.randomNode();
 		index targetPart = Aux::Random::index(k);
-		edgeweight gain = Partitioner::calculateGain(H, part, v, targetPart);
+		edgeweight gain = MultiLevelPartitioner::calculateGain(H, part, v, targetPart);
 		part.moveToSubset(targetPart, v);
 		edgeweight newcut = part.calculateCutWeight(H);
 		EXPECT_EQ(cut, newcut + gain);
@@ -64,7 +64,7 @@ TEST_F(PartitionerGTest, testGainRandomGraph) {
 	}
 }
 
-TEST_F(PartitionerGTest, testFMOnContractedBarabasiAlbert) {
+TEST_F(MultiLevelPartitionerGTest, testFMOnContractedBarabasiAlbert) {
 	METISGraphReader reader;
 	Graph G = reader.read("input/intermediate.graph");
 	const count n = G.numberOfNodes();
@@ -76,13 +76,13 @@ TEST_F(PartitionerGTest, testFMOnContractedBarabasiAlbert) {
 
 	edgeweight gain;
 	do {
-		gain = Partitioner::fiducciaMatheysesStep(G, part);
+		gain = MultiLevelPartitioner::fiducciaMatheysesStep(G, part);
 		DEBUG("Found gain ", gain, " in FM-step with ", G.numberOfNodes(), " nodes and ", part.numberOfSubsets(), " partitions.");
 	} while (gain > 0);
 	EXPECT_EQ(k, part.numberOfSubsets());
 }
 
-TEST_F(PartitionerGTest, testFMOnRealGraphAndRandomPartition) {
+TEST_F(MultiLevelPartitionerGTest, testFMOnRealGraphAndRandomPartition) {
 	METISGraphReader reader;
 	Graph G = reader.read("input/bacteriorhodopsin-10-2.5.graph");
 
@@ -95,7 +95,7 @@ TEST_F(PartitionerGTest, testFMOnRealGraphAndRandomPartition) {
 	edgeweight gainsum = 0;
 	edgeweight gain;
 	do {
-		gain = Partitioner::fiducciaMatheysesStep(G, part);
+		gain = MultiLevelPartitioner::fiducciaMatheysesStep(G, part);
 		gainsum += gain;
 		DEBUG("Found gain ", gain, " in FM-step with ", G.numberOfNodes(), " nodes and ", part.numberOfSubsets(), " partitions.");
 	} while (gain > 0);
@@ -106,7 +106,7 @@ TEST_F(PartitionerGTest, testFMOnRealGraphAndRandomPartition) {
 	EXPECT_EQ(k, part.numberOfSubsets());
 }
 
-TEST_F(PartitionerGTest, testRegionGrowingOnRealGraph) {
+TEST_F(MultiLevelPartitionerGTest, testRegionGrowingOnRealGraph) {
 	METISGraphReader reader;
 	Graph G = reader.read("input/bacteriorhodopsin-10-2.5.graph");
 
@@ -135,11 +135,11 @@ TEST_F(PartitionerGTest, testRegionGrowingOnRealGraph) {
 		startingNodes[i] = chIndex;
 	}
 
-	Partition part = Partitioner::growRegions(G, startingNodes);
+	Partition part = MultiLevelPartitioner::growRegions(G, startingNodes);
 	EXPECT_EQ(k, part.numberOfSubsets());
 }
 
-TEST_F(PartitionerGTest, testPartitionerOnRealGraphWithChargedNodes) {
+TEST_F(MultiLevelPartitionerGTest, testPartitionerOnRealGraphWithChargedNodes) {
 	/**
 	 * read in Graph
 	 */
@@ -179,7 +179,7 @@ TEST_F(PartitionerGTest, testPartitionerOnRealGraphWithChargedNodes) {
 	/**
 	 * call partitioner
 	 */
-	Partitioner part(G, targetK, 10, false, charged);
+	MultiLevelPartitioner part(G, targetK, 10, false, charged);
 	part.run();
 	Partition result = part.getPartition();
 
@@ -195,7 +195,7 @@ TEST_F(PartitionerGTest, testPartitionerOnRealGraphWithChargedNodes) {
 	}
 }
 
-TEST_F(PartitionerGTest, testPartitionerOnBarabasiAlbert) {
+TEST_F(MultiLevelPartitionerGTest, testPartitionerOnBarabasiAlbert) {
 	/**
 	 * generate graph
 	 */
@@ -208,7 +208,7 @@ TEST_F(PartitionerGTest, testPartitionerOnBarabasiAlbert) {
 	/**
 	 * call partitioner
 	 */
-	Partitioner part(G, targetK, maxImbalance);
+	MultiLevelPartitioner part(G, targetK, maxImbalance);
 	part.run();
 	Partition result = part.getPartition();
 
@@ -225,7 +225,7 @@ TEST_F(PartitionerGTest, testPartitionerOnBarabasiAlbert) {
 
 }
 
-TEST_F(PartitionerGTest, testPartitionerOnRealGraph) {
+TEST_F(MultiLevelPartitionerGTest, testPartitionerOnRealGraph) {
 	METISGraphReader reader;
 	Graph G = reader.read("input/bacteriorhodopsin-10-2.5.graph");
 
@@ -234,7 +234,7 @@ TEST_F(PartitionerGTest, testPartitionerOnRealGraph) {
 	const count n = G.numberOfNodes();
 	const double maxImbalance = 0.1;
 
-	Partitioner part(G, targetK, maxImbalance);
+	MultiLevelPartitioner part(G, targetK, maxImbalance);
 	part.run();
 	Partition result = part.getPartition();
 	EXPECT_EQ(n, result.numberOfElements());
@@ -257,7 +257,7 @@ TEST_F(PartitionerGTest, testPartitionerOnRealGraph) {
 	EXPECT_LT(cutWeight, naivecut);
 }
 
-TEST_F(PartitionerGTest, testPartitionerNaiveComparisonRealGraph) {
+TEST_F(MultiLevelPartitionerGTest, testPartitionerNaiveComparisonRealGraph) {
 	METISGraphReader reader;
 	Graph G = reader.read("input/bacteriorhodopsin-10-2.5.graph");
 
@@ -266,7 +266,7 @@ TEST_F(PartitionerGTest, testPartitionerNaiveComparisonRealGraph) {
 	const count n = G.numberOfNodes();
 	const double maxImbalance = 0.1;
 
-	Partitioner part(G, targetK, maxImbalance);
+	MultiLevelPartitioner part(G, targetK, maxImbalance);
 	part.run();
 	Partition result = part.getPartition();
 	edgeweight cutWeight = result.calculateCutWeight(G);
@@ -281,7 +281,7 @@ TEST_F(PartitionerGTest, testPartitionerNaiveComparisonRealGraph) {
 
 	edgeweight gain;
 	do {
-		gain = Partitioner::fiducciaMatheysesStep(G, naive);
+		gain = MultiLevelPartitioner::fiducciaMatheysesStep(G, naive);
 		assert(gain == gain);
 		DEBUG("Found gain ", gain, " in FM-step with ", G.numberOfNodes(), " nodes and ", naive.numberOfSubsets(), " partitions.");
 	} while (gain > 0);

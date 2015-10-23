@@ -20,14 +20,14 @@
 
 namespace NetworKit {
 
-class Partitioner : public Algorithm {
+class MultiLevelPartitioner : public Algorithm {
 	friend class PartitionerGTest;
 
 public:
-	Partitioner(const Graph& G, count numParts = 10, double maxImbalance = 2, bool bisectRecursivelyForInitialPartitioning = false, const std::vector<index>& chargedVertices = {});
+	MultiLevelPartitioner(const Graph& G, count numParts = 10, double maxImbalance = 2, bool bisectRecursivelyForInitialPartitioning = false, const std::vector<index>& chargedVertices = {});
 
 	//Partitioner(const Graph& G, const std::vector<index>& chargedVertices, double maxImbalance = 10, bool bisectRecursivelyForInitialPartitioning = true);
-	virtual ~Partitioner() = default;
+	virtual ~MultiLevelPartitioner() = default;
 
 	/**
 	 * Apply algorithm to graph
