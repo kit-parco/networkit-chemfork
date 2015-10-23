@@ -45,37 +45,37 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 	// coarsen recursively until graph is small enough
 	if (n <= 2 * numParts) {
 	   Partition initial;
-//	   if (bisectRecursively) {
-//		   initial = recursiveBisection(G, numParts);
-//	   } else {
-//		   vector<index> startingPoints(chargedVertices);
-//		   startingPoints.resize(numParts);
-//
-//		   /**
-//		    * fill up starting points with random other points
-//		    */
-//		   for (index i = chargedVertices.size(); i < numParts; i++) {
-//				bool present;
-//				index stIndex;
-//				do {
-//					/**
-//					 * sample random index. If already present, sample again.
-//					 */
-//					stIndex = Aux::Random::index(n);
-//					present = false;
-//					for (index j = 0; j < i; j++) {
-//						if (startingPoints[j] == stIndex) {
-//							present = true;
-//						}
-//					}
-//				} while (present);
-//				startingPoints[i] = stIndex;
-//			}
-//		   initial = growRegions(G, startingPoints);
-//	   }
+	   if (bisectRecursively) {
+		   initial = recursiveBisection(G, numParts);
+	   } else {
+		   vector<index> startingPoints(chargedVertices);
+		   startingPoints.resize(numParts);
+
+		   /**
+		    * fill up starting points with random other points
+		    */
+		   for (index i = chargedVertices.size(); i < numParts; i++) {
+				bool present;
+				index stIndex;
+				do {
+					/**
+					 * sample random index. If already present, sample again.
+					 */
+					stIndex = Aux::Random::index(n);
+					present = false;
+					for (index j = 0; j < i; j++) {
+						if (startingPoints[j] == stIndex) {
+							present = true;
+						}
+					}
+				} while (present);
+				startingPoints[i] = stIndex;
+			}
+		   initial = growRegions(G, startingPoints);
+	   }
 
 	   ClusteringGenerator gen;
-	   initial = gen.makeContinuousBalancedClustering(G, numParts);
+	   //initial = gen.makeContinuousBalancedClustering(G, numParts);
 
 	   count initialK = initial.numberOfSubsets();
 	   DEBUG("Initial solution has ", initialK, " partitions, a cut of ", initial.calculateCutWeight(G), " and an imbalance of ", initial.getImbalance(numParts));
