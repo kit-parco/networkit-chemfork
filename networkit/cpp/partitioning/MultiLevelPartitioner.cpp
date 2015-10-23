@@ -49,33 +49,19 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 		   initial = recursiveBisection(G, numParts);
 	   } else {
 		   vector<index> startingPoints(chargedVertices);
-		   startingPoints.resize(numParts);
 
 		   /**
-		    * fill up starting points with random other points
+		    * fill up starting points with other points
 		    */
 		   for (index i = chargedVertices.size(); i < numParts; i++) {
-				bool present;
-				index stIndex;
-				do {
-					/**
-					 * sample random index. If already present, sample again.
-					 */
-					stIndex = Aux::Random::index(n);
-					present = false;
-					for (index j = 0; j < i; j++) {
-						if (startingPoints[j] == stIndex) {
-							present = true;
-						}
-					}
-				} while (present);
-				startingPoints[i] = stIndex;
+			   index farthestNode = getFarthestNode(G, startingPoints);
+			   startingPoints.push_back(farthestNode);
 			}
 		   initial = growRegions(G, startingPoints);
 	   }
 
 	   ClusteringGenerator gen;
-	   //initial = gen.makeContinuousBalancedClustering(G, numParts);
+	   initial = gen.makeContinuousBalancedClustering(G, numParts);
 
 	   count initialK = initial.numberOfSubsets();
 	   DEBUG("Initial solution has ", initialK, " partitions, a cut of ", initial.calculateCutWeight(G), " and an imbalance of ", initial.getImbalance(numParts));
@@ -586,6 +572,31 @@ std::pair<index, index> MultiLevelPartitioner::getMaximumDistancePair(const Grap
 
 	//assert(GraphDistance().unweightedDistance(g, a,b) == maxDistance); does not need to be true, there might be a shortcut through another partitition
 	return {a, b};
+}
+
+index MultiLevelPartitioner::getFarthestNode(const Graph& G, std::vector<index> seedNodes) {
+	/**
+	 * Yet another BFS.
+	 */
+	const count n = G.numberOfNodes();
+	const count z = G.upperNodeIdBound();
+
+	vector<bool> visited(z, false);
+	queue<index> bfsQueue;
+
+	for (index seed : seedNodes) {
+		bfsQueue.push(seed);
+		assert(G.hasNode(seed));
+	}
+
+	index nextNode = G.randomNode(); //will be overwritten anyway, except if seedNodes was empty
+	while (bfsQueue.size() > 0) {
+		nextNode = bfsQueue.front();
+		bfsQueue.pop();
+		visited[nextNode] = true;
+		G.forNeighborsOf(nextNode, [&visited, &bfsQueue](index v){if (!visited[v]) bfsQueue.push(v);});
+	}
+	return nextNode;
 }
 
 void MultiLevelPartitioner::enforceBalance(const Graph& G, Partition& part, double maxImbalance, const vector<index>& chargedVertices) {

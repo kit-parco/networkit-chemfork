@@ -56,6 +56,8 @@ protected:
 	static Partition recursiveBisection(const Graph& g, count k);
 	static void recursiveBisection(const Graph& g, count k, Partition& input, index maskID);
 
+	static index getFarthestNode(const Graph& g, std::vector<index> seedNodes);
+
 	static std::pair<index, index> getMaximumDistancePair(const Graph& g, const Partition& constraint, const index partition);
 
 	const Graph& G;
