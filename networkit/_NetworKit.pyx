@@ -5712,6 +5712,38 @@ cdef class ParallelPartitionCoarsening(GraphCoarsening):
 	def __cinit__(self, Graph G not None, Partition zeta not None, useGraphBuilder = True):
 		self._this = new _ParallelPartitionCoarsening(G._this, zeta._this, useGraphBuilder)
 
+# Module: partitioning
+
+cdef extern from "cpp/partitioning/MultiLevelPartitioner.h":
+	cdef cppclass _MultiLevelPartitioner "NetworKit::MultiLevelPartitioner":
+		_MultiLevelPartitioner(_Graph G, count numParts, double imbalance, bool bisectRecursively, vector[index] chargedVertices) except +
+		void run() except +
+		_Partition getPartition() except +
+		
+cdef class MultiLevelPartitioner:
+	"""
+	Uses graph coarsening and an adapted Fiduccia-Matheyses step to partition the input graph.
+	This method also accepts a list of charged vertices, no pair of them will end up in the same subset.
+
+	Parameters
+	-----------
+	G : graph which is to be partitioned
+	numParts : number of subsets the partition should have
+	imbalance : maximum imbalance. The largest subset will have a size of at most (1+imbalance)*(G.numberOfNodes() / numParts) - except where impossible.
+	bisectRecursively : Whether to use recursive bisection for the initial partition
+	chargedVertices : A list of nodes which need some space
+	"""
+	cdef _MultiLevelPartitioner* _this
+
+	def __cinit__(self, Graph G, count numParts, double imbalance, bool bisectRecursively, vector[index] chargedVertices):
+		self._this = new _MultiLevelPartitioner(G._this, numParts, imbalance, bisectRecursively, chargedVertices)
+
+	def run(self):
+		self._this.run()
+
+	def getPartition(self):
+		return Partition(0).setThis(self._this.getPartition())
+	
 
 # Module: scd
 

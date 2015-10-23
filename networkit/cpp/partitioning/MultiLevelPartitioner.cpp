@@ -9,7 +9,7 @@
 #include <queue>
 #include <algorithm>
 
-#include "Partitioner.h"
+#include "MultiLevelPartitioner.h"
 #include "../auxiliary/PrioQueue.h"
 #include "../auxiliary/Random.h"
 
@@ -23,7 +23,7 @@ using Aux::PrioQueue;
 
 namespace NetworKit {
 
-Partitioner::Partitioner(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const vector<index>& chargedVertices) : Algorithm(), G(G), numParts(numParts), charged(chargedVertices.size() > 0), maxImbalance(maxImbalance), bisectRecursively(bisectRecursively), chargedNodes(chargedVertices), result(0) {
+MultiLevelPartitioner::MultiLevelPartitioner(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const vector<index>& chargedVertices) : Algorithm(), G(G), numParts(numParts), charged(chargedVertices.size() > 0), maxImbalance(maxImbalance), bisectRecursively(bisectRecursively), chargedNodes(chargedVertices), result(0) {
 	if (G.numberOfSelfLoops() > 0) throw std::runtime_error("Graph must not have self-loops.");
 	if (chargedNodes.size() > numParts) throw std::runtime_error("Cannot have more charged nodes than partitions.");
 	if (bisectRecursively && charged) throw std::runtime_error("If using charged nodes, use region growing for the initial graph.");
@@ -32,12 +32,12 @@ Partitioner::Partitioner(const Graph& G, count numParts, double maxImbalance, bo
 	}
 }
 
-void Partitioner::run() {
+void MultiLevelPartitioner::run() {
 	result = partitionRecursively(G, numParts, maxImbalance, bisectRecursively, chargedNodes);
 	hasRun = true;
 }
 
-Partition Partitioner::partitionRecursively(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const std::vector<index>& chargedVertices) {
+Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const std::vector<index>& chargedVertices) {
 	count n = G.numberOfNodes();
 	count m = G.numberOfEdges();
 	DEBUG("Partitioning graph with ", n, " nodes, ", m, " edges and total edge weight ",  G.totalEdgeWeight() , " into ", numParts, " parts.");
@@ -134,7 +134,7 @@ Partition Partitioner::partitionRecursively(const Graph& G, count numParts, doub
 	}
 }
 
-edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part, double maxImbalance, const std::vector<index> chargedVertices) {
+edgeweight MultiLevelPartitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part, double maxImbalance, const std::vector<index> chargedVertices) {
 	/**
 	 * magic numbers
 	 */
@@ -337,7 +337,7 @@ edgeweight Partitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part, 
 	return result;
 }
 
-edgeweight Partitioner::calculateGain(const Graph& g, const Partition& input, index u, index targetPart) {
+edgeweight MultiLevelPartitioner::calculateGain(const Graph& g, const Partition& input, index u, index targetPart) {
 	assert(input.numberOfElements() >= g.numberOfNodes());
 	assert(g.hasNode(u));
 	assert(input.contains(u));
@@ -355,18 +355,18 @@ edgeweight Partitioner::calculateGain(const Graph& g, const Partition& input, in
 	return extDegreeNow - extDegreeAfterMove;
 }
 
-Partition Partitioner::getPartition() {
+Partition MultiLevelPartitioner::getPartition() {
 	if(!hasRun) {
 		throw std::runtime_error("Call run()-function first.");
 	}
 	return result;
 }
 
-std::string Partitioner::toString() const {
+std::string MultiLevelPartitioner::toString() const {
 	return "TODO";
 }
 
-Partition Partitioner::recursiveBisection(const Graph& g, count k) {
+Partition MultiLevelPartitioner::recursiveBisection(const Graph& g, count k) {
 	assert(k <= g.numberOfNodes());
 	Partition trivialConstraint(g.upperNodeIdBound());
 	trivialConstraint.allToOnePartition();
@@ -374,7 +374,7 @@ Partition Partitioner::recursiveBisection(const Graph& g, count k) {
 	return trivialConstraint;
 }
 
-void Partitioner::recursiveBisection(const Graph& g, count k, Partition& mask, index maskID) {
+void MultiLevelPartitioner::recursiveBisection(const Graph& g, count k, Partition& mask, index maskID) {
 	if (k == 1) return;
 	auto beforeMap = mask.subsetSizeMap();
 	count nodes = beforeMap.at(maskID);
@@ -411,14 +411,14 @@ void Partitioner::recursiveBisection(const Graph& g, count k, Partition& mask, i
 	recursiveBisection(g, secondWeight, mask, b);
 }
 
-Partition Partitioner::growRegions(const Graph& g, const vector<index>& startingPoints) {
+Partition MultiLevelPartitioner::growRegions(const Graph& g, const vector<index>& startingPoints) {
 	Partition constraint(g.numberOfNodes());
 	constraint.allToOnePartition();
 	vector<count> weights(startingPoints.size(), 1);
 	return growRegions(g, startingPoints, weights, constraint);
 }
 
-Partition Partitioner::growRegions(const Graph& g, const vector<index>& startingPoints, const vector<count>& weights, const Partition& constraint) {
+Partition MultiLevelPartitioner::growRegions(const Graph& g, const vector<index>& startingPoints, const vector<count>& weights, const Partition& constraint) {
 	/**
 	 * validate input
 	 */
@@ -508,7 +508,7 @@ Partition Partitioner::growRegions(const Graph& g, const vector<index>& starting
 /**
  * optimization: give one node as parameter, there should be one lying around somewhere
  */
-std::pair<index, index> Partitioner::getMaximumDistancePair(const Graph& g, const Partition& constraint, const index partition) {
+std::pair<index, index> MultiLevelPartitioner::getMaximumDistancePair(const Graph& g, const Partition& constraint, const index partition) {
 	assert(partition < constraint.upperBound());
 	assert(constraint.subsetSizeMap().at(partition) >= 2);
 	assert(constraint.numberOfElements() == g.numberOfNodes());
@@ -588,7 +588,7 @@ std::pair<index, index> Partitioner::getMaximumDistancePair(const Graph& g, cons
 	return {a, b};
 }
 
-void Partitioner::enforceBalance(const Graph& G, Partition& part, double maxImbalance, const vector<index>& chargedVertices) {
+void MultiLevelPartitioner::enforceBalance(const Graph& G, Partition& part, double maxImbalance, const vector<index>& chargedVertices) {
 	const count n = G.numberOfNodes();
 	const count z = G.upperNodeIdBound();
 	const count k = part.numberOfSubsets();

@@ -1,5 +1,9 @@
+"""
+This module provides graph partitioners.
+"""
+
 # extension imports
-from _NetworKit import Partition, Modularity
+from _NetworKit import Partition, Modularity, MultiLevelPartitioner
 
 # local imports
 from .algebraic import laplacianEigenvectors

@@ -16,7 +16,7 @@
 namespace NetworKit {
 
 
-class PartitionerGTest: public testing::Test  {
+class MultiLevelPartitionerGTest: public testing::Test  {
 
 };
 
