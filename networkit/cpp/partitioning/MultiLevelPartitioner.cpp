@@ -38,8 +38,10 @@ void MultiLevelPartitioner::run() {
 }
 
 Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const std::vector<index>& chargedVertices) {
-	count n = G.numberOfNodes();
-	count m = G.numberOfEdges();
+	const count n = G.numberOfNodes();
+	const count m = G.numberOfEdges();
+	const bool chargePresent = chargedVertices.size() > 0;
+
 	DEBUG("Partitioning graph with ", n, " nodes, ", m, " edges and total edge weight ",  G.totalEdgeWeight() , " into ", numParts, " parts.");
 
 	// coarsen recursively until graph is small enough
@@ -53,7 +55,16 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 		   /**
 		    * fill up starting points with other points
 		    */
-		   for (index i = chargedVertices.size(); i < numParts; i++) {
+		   index startGeneration = chargedVertices.size();
+//		   if (!chargePresent) {
+//			   Partition trivialConstraint(G.upperNodeIdBound());
+//			   trivialConstraint.allToOnePartition();
+//			   std::pair<index, index> firstTwo = getMaximumDistancePair(G, trivialConstraint, trivialConstraint[0]);
+//			   startingPoints.push_back(firstTwo.first);
+//			   startingPoints.push_back(firstTwo.second);
+//			   startGeneration += 2;
+//		   }
+		   for (index i = startGeneration; i < numParts; i++) {
 			   index farthestNode = getFarthestNode(G, startingPoints);
 			   startingPoints.push_back(farthestNode);
 			}
