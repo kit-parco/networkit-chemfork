@@ -258,9 +258,9 @@ TEST_F(MultiLevelPartitionerGTest, testPartitionerOnRealGraph) {
 
 TEST_F(MultiLevelPartitionerGTest, testPartitionerNaiveComparisonRealGraph) {
 	METISGraphReader reader;
-	Graph G = reader.read("input/bacteriorhodopsin.graph");
+	Graph G = reader.read("input/bacteriorhodopsin-10-10.graph");
 
-	const count targetK = 10;
+	const count targetK = 32;
 
 	const count n = G.numberOfNodes();
 	const double maxImbalance = 0.1;
