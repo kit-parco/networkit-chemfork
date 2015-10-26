@@ -218,7 +218,6 @@ TEST_F(MultiLevelPartitionerGTest, testPartitionerOnBarabasiAlbert) {
 	DEBUG("Resulted in ", result.numberOfSubsets(), " partitions, with a cut of weight ", result.calculateCutWeight(G));
 	EXPECT_EQ(targetK, result.numberOfSubsets());
 
-	auto map = result.subsetSizeMap();
 	double measuredImbalance = result.getImbalance(targetK);
 
 	EXPECT_LE(measuredImbalance, maxImbalance);
@@ -259,7 +258,7 @@ TEST_F(MultiLevelPartitionerGTest, testPartitionerOnRealGraph) {
 
 TEST_F(MultiLevelPartitionerGTest, testPartitionerNaiveComparisonRealGraph) {
 	METISGraphReader reader;
-	Graph G = reader.read("input/bacteriorhodopsin-10-2.5.graph");
+	Graph G = reader.read("input/bacteriorhodopsin.graph");
 
 	const count targetK = 10;
 
