@@ -148,15 +148,12 @@ edgeweight MultiLevelPartitioner::fiducciaMatheysesStep(const Graph& g, Partitio
 	 * if the number of nodes is not divisible by the number of partitions, a perfect balance is impossible.
 	 * To avoid an endless loop, compute the theoretical minimum imbalance and adjust the parameter if necessary.
 	 */
-	const double avgSize = double(n) / k;
-	const double epsilon = 0.000001;//to handle floating point issues
-	const double minImbalance = std::max(ceil(avgSize) / avgSize - 1, 1 - floor(avgSize) / avgSize );
-	const double permittableImbalance = std::max(minImbalance, maxImbalance) + epsilon;
+	const count optSize = ceil(double(n) / k);
 
-	const count maxAllowablePartSize = avgSize*(1+permittableImbalance);
-	const count minAllowablePartSize = permittableImbalance >= 1 ? 0 : ceil(avgSize*(1-permittableImbalance));
-	assert(maxAllowablePartSize >= avgSize);
-	assert(minAllowablePartSize <= avgSize);
+	const count maxAllowablePartSize = optSize*(1+maxImbalance);
+	const count minAllowablePartSize = maxImbalance >= 1 ? 0 : ceil(optSize*(1-maxImbalance));
+	assert(maxAllowablePartSize >= optSize);
+	assert(minAllowablePartSize <= optSize);
 
 	/**
 	 * mark which partitions are charged already
@@ -605,13 +602,9 @@ void MultiLevelPartitioner::enforceBalance(const Graph& G, Partition& part, doub
 	const count k = part.numberOfSubsets();
 	assert(part.numberOfElements() == n);
 
-	/**
-	 * if the number of nodes is not divisible by the number of partitions, a perfect balance is impossible.
-	 * To avoid an endless loop, compute the theoretical minimum imbalance and adjust the parameter if necessary.
-	 */
+	const count optSize = ceil(double(n) / k);
 	const double epsilon = 0.000001;//to handle floating point issues
-	const double minImbalance = std::max(ceil(double(n)/k) / (double(n)/k) - 1, 1 - floor(double(n)/k) / (double(n)/k) );
-	const double permittableImbalance = std::max(minImbalance, maxImbalance) + epsilon;
+	const count maxAllowablePartSize = optSize*(1+maxImbalance);
 
 	/**
 	 * allocate data structures similar to FM
@@ -643,7 +636,7 @@ void MultiLevelPartitioner::enforceBalance(const Graph& G, Partition& part, doub
 	/**
 	 * repeat until partitions are balanced
 	 */
-	while(currentImbalance > permittableImbalance) {
+	while(currentImbalance > maxImbalance) {
 		/**
 		 * reset priority queues
 		 */
