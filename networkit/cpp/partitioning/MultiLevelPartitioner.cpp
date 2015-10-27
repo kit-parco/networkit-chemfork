@@ -55,16 +55,7 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 		   /**
 		    * fill up starting points with other points
 		    */
-		   index startGeneration = chargedVertices.size();
-//		   if (!chargePresent) {
-//			   Partition trivialConstraint(G.upperNodeIdBound());
-//			   trivialConstraint.allToOnePartition();
-//			   std::pair<index, index> firstTwo = getMaximumDistancePair(G, trivialConstraint, trivialConstraint[0]);
-//			   startingPoints.push_back(firstTwo.first);
-//			   startingPoints.push_back(firstTwo.second);
-//			   startGeneration += 2;
-//		   }
-		   for (index i = startGeneration; i < numParts; i++) {
+		   for (index i = chargedVertices.size(); i < numParts; i++) {
 			   index farthestNode = getFarthestNode(G, startingPoints);
 			   startingPoints.push_back(farthestNode);
 			}
@@ -151,6 +142,7 @@ edgeweight MultiLevelPartitioner::fiducciaMatheysesStep(const Graph& g, Partitio
 	vector<edgeweight> gains;
 	vector<pair<index, index> > transfers;
 	vector<index> transferedVertices;
+	vector<double> imbalance;
 	edgeweight total = g.totalEdgeWeight();
 	vector<bool> charged(z, false);
 	vector<bool> chargedPart(part.upperBound(), false);
@@ -258,6 +250,10 @@ edgeweight MultiLevelPartitioner::fiducciaMatheysesStep(const Graph& g, Partitio
 			gains.push_back(gainsum);
 			transfers.emplace_back(partID, IdAtMax);
 			transferedVertices.push_back(topVertex);
+			/**
+			 * this next line looks daunting, but just takes the partition with the largest size (map entry in partitionSizes) and divides its size by the optimal size to get the imbalance
+			 */
+			imbalance.push_back(double((*std::max_element(partitionSizes.begin(), partitionSizes.end(), [](const pair<index, count>& a, const pair<index, count>& b){return a.second < b.second;})).second) / optSize);
 
 			//update counter and possibly abort early
 			if (topGain > 0) {
@@ -303,32 +299,24 @@ edgeweight MultiLevelPartitioner::fiducciaMatheysesStep(const Graph& g, Partitio
 	/**
 	 * now find best partition among those tested
 	 */
-	int maxIndex = 0;
+	int maxIndex = -1;
+	edgeweight maxGain = 0;
 	for (index i = 0; i < testedNodes; i++) {
-		if (gains[i] > gains[maxIndex]) maxIndex = i;
-	}
-
-	int loopStop;
-	edgeweight result;
-	if (gains[maxIndex] < 0) {
-		/**
-		 * all was for naught! Reverse everything.
-		 */
-		loopStop = -1;
-	} else {
-		loopStop = maxIndex;
+		if (gains[i] > maxGain) {
+			maxIndex = i;
+			maxGain = gains[i];
+		}
 	}
 
 	/**
 	 * apply partition modifications in reverse until best is recovered
 	 */
-	for (int i = testedNodes-1; i > loopStop; i--) {
+	for (int i = testedNodes-1; i > maxIndex; i--) {
 		assert(part[transferedVertices[i]] == transfers[i].second);
 		TRACE("Reversing move of ", transferedVertices[i], " from ", transfers[i].second, " back to ", transfers[i].first);
 		part.moveToSubset(transfers[i].first, transferedVertices[i]);
 	}
-	result = loopStop == -1 ? 0 : gains[maxIndex];
-	return result;
+	return maxGain;
 }
 
 edgeweight MultiLevelPartitioner::calculateGain(const Graph& g, const Partition& input, index u, index targetPart) {
