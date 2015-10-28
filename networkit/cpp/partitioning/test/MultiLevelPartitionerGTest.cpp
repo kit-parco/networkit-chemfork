@@ -233,12 +233,12 @@ TEST_F(MultiLevelPartitionerGTest, testPartitionerOnRealGraph) {
 	const count n = G.numberOfNodes();
 	const double maxImbalance = 0.1;
 
-	MultiLevelPartitioner part(G, targetK, maxImbalance);
+	MultiLevelPartitioner part(G, targetK, maxImbalance, false, {}, true);
 	part.run();
 	Partition result = part.getPartition();
 	EXPECT_EQ(n, result.numberOfElements());
 	edgeweight cutWeight = result.calculateCutWeight(G);
-	DEBUG("Resulted in ", result.numberOfSubsets(), " partitions, with a cut of weight ", cutWeight);
+	DEBUG("Resulted in ", result.numberOfSubsets(), " partitions, with a cut of weight ", cutWeight, " and an imbalance of ", result.getImbalance(targetK));
 	EXPECT_EQ(targetK, result.numberOfSubsets());
 
 	double measuredImbalance = result.getImbalance(targetK);
@@ -265,11 +265,11 @@ TEST_F(MultiLevelPartitionerGTest, testPartitionerNaiveComparisonRealGraph) {
 	const count n = G.numberOfNodes();
 	const double maxImbalance = 0.1;
 
-	MultiLevelPartitioner part(G, targetK, maxImbalance);
+	MultiLevelPartitioner part(G, targetK, maxImbalance, false, {}, true);
 	part.run();
 	Partition result = part.getPartition();
 	edgeweight cutWeight = result.calculateCutWeight(G);
-	DEBUG("Resulted in ", result.numberOfSubsets(), " partitions, with a cut of weight ", cutWeight);
+	DEBUG("Resulted in ", result.numberOfSubsets(), " partitions, with a cut of weight ", cutWeight, " and an imbalance of ", result.getImbalance(targetK));
 	EXPECT_EQ(targetK, result.numberOfSubsets());
 
 	/**

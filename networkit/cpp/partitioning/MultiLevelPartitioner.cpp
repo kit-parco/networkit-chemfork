@@ -23,7 +23,7 @@ using Aux::PrioQueue;
 
 namespace NetworKit {
 
-MultiLevelPartitioner::MultiLevelPartitioner(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const vector<index>& chargedVertices) : Algorithm(), G(G), numParts(numParts), charged(chargedVertices.size() > 0), maxImbalance(maxImbalance), bisectRecursively(bisectRecursively), chargedNodes(chargedVertices), result(0) {
+MultiLevelPartitioner::MultiLevelPartitioner(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const vector<index>& chargedVertices, bool avoidSingleNodes) : Algorithm(), G(G), numParts(numParts), charged(chargedVertices.size() > 0), maxImbalance(maxImbalance), bisectRecursively(bisectRecursively), chargedNodes(chargedVertices), noSingles(avoidSingleNodes), result(0) {
 	if (G.numberOfSelfLoops() > 0) throw std::runtime_error("Graph must not have self-loops.");
 	if (chargedNodes.size() > numParts) throw std::runtime_error("Cannot have more charged nodes than partitions.");
 	if (bisectRecursively && charged) throw std::runtime_error("If using charged nodes, use region growing for the initial graph.");
@@ -34,8 +34,14 @@ MultiLevelPartitioner::MultiLevelPartitioner(const Graph& G, count numParts, dou
 
 void MultiLevelPartitioner::run() {
 	result = partitionRecursively(G, numParts, maxImbalance, bisectRecursively, chargedNodes);
+
+	/**
+	 * make sure that the partition is balanced. Only necessary if the balance constraint was relaxed during the multi-level-partitioning
+	 */
 	enforceBalance(G, result, maxImbalance, chargedNodes);
 	fiducciaMatheysesStep(G, result, maxImbalance, chargedNodes);
+
+	if (noSingles) repairSingleNodes(G, result);
 
 	hasRun = true;
 }
@@ -761,5 +767,26 @@ void MultiLevelPartitioner::enforceBalance(const Graph& G, Partition& part, doub
 
 	}
 }
+
+void MultiLevelPartitioner::repairSingleNodes(const Graph& G, Partition& intermediate) {
+	const count n = G.numberOfNodes();
+	const count z = G.upperNodeIdBound();
+	assert(intermediate.numberOfElements() == n);
+
+	//TODO: this has problems with deleted nodes
+	for (index i = 1; i < n-1; i++) {
+		index lastPart = intermediate[i-1];
+		index currentPart = intermediate[i];
+		index nextPart = intermediate[i+1];
+		if (lastPart == nextPart && lastPart != currentPart) {
+			/**
+			 * we have a single node wedged into a wrong partition
+			 */
+			intermediate.moveToSubset(lastPart, i);
+			DEBUG("Moved node ", i, " to subset ", lastPart, " as it was surrounded by it.");
+		}
+	}
+}
+
 
 } /* namespace NetworKit */

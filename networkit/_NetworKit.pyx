@@ -5716,7 +5716,7 @@ cdef class ParallelPartitionCoarsening(GraphCoarsening):
 
 cdef extern from "cpp/partitioning/MultiLevelPartitioner.h":
 	cdef cppclass _MultiLevelPartitioner "NetworKit::MultiLevelPartitioner":
-		_MultiLevelPartitioner(_Graph G, count numParts, double imbalance, bool bisectRecursively, vector[index] chargedVertices) except +
+		_MultiLevelPartitioner(_Graph G, count numParts, double imbalance, bool bisectRecursively, vector[index] chargedVertices, bool avoidSurroundedNodes) except +
 		void run() except +
 		_Partition getPartition() except +
 		
@@ -5729,14 +5729,15 @@ cdef class MultiLevelPartitioner:
 	-----------
 	G : graph which is to be partitioned
 	numParts : number of subsets the partition should have
-	imbalance : maximum imbalance. The largest subset will have a size of at most (1+imbalance)*(G.numberOfNodes() / numParts) - except where impossible.
+	imbalance : maximum imbalance. The largest subset will have a size of at most (1+imbalance)*ceil(G.numberOfNodes() / numParts) - except where impossible.
 	bisectRecursively : Whether to use recursive bisection for the initial partition
 	chargedVertices : A list of nodes which need some space
+	avoidSurroundedNodes : If true, partitioner avoids partitions where part[v-1] == part[v+1] != part[v]
 	"""
 	cdef _MultiLevelPartitioner* _this
 
-	def __cinit__(self, Graph G, count numParts, double imbalance, bool bisectRecursively, vector[index] chargedVertices):
-		self._this = new _MultiLevelPartitioner(G._this, numParts, imbalance, bisectRecursively, chargedVertices)
+	def __cinit__(self, Graph G, count numParts, double imbalance, bool bisectRecursively, vector[index] chargedVertices, bool avoidSurroundedNodes=False):
+		self._this = new _MultiLevelPartitioner(G._this, numParts, imbalance, bisectRecursively, chargedVertices, avoidSurroundedNodes)
 
 	def run(self):
 		self._this.run()
