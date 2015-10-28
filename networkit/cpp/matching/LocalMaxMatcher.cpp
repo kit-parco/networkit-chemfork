@@ -55,7 +55,7 @@ Matching LocalMaxMatcher::run() {
 	while (E > 0) {
 		// for each edge find out if it is locally maximum
 		for (auto edge: edges) {
-			if (edge.w > candidates[edge.s].w && edge.w > candidates[edge.t].w) {
+			if (edge.w > candidates[edge.s].w && edge.w > candidates[edge.t].w && edge.s != edge.t && (!charged[edge.s] || !charged[edge.t])) {
 				candidates[edge.s].t = edge.t;
 				candidates[edge.s].w = edge.w;
 				candidates[edge.t].t = edge.s;
