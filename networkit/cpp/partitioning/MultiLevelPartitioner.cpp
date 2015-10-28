@@ -34,6 +34,9 @@ MultiLevelPartitioner::MultiLevelPartitioner(const Graph& G, count numParts, dou
 
 void MultiLevelPartitioner::run() {
 	result = partitionRecursively(G, numParts, maxImbalance, bisectRecursively, chargedNodes);
+	enforceBalance(G, result, maxImbalance, chargedNodes);
+	fiducciaMatheysesStep(G, result, maxImbalance, chargedNodes);
+
 	hasRun = true;
 }
 
@@ -154,7 +157,8 @@ edgeweight MultiLevelPartitioner::fiducciaMatheysesStep(const Graph& g, Partitio
 	const count optSize = ceil(double(n) / k);
 
 	const count maxAllowablePartSize = optSize*(1+maxImbalance);
-	const count minAllowablePartSize = maxImbalance >= 1 ? 0 : ceil(optSize*(1-maxImbalance));
+	count minAllowablePartSize = maxImbalance >= 1 ? 1 : ceil(optSize*(1-maxImbalance));
+	if (minAllowablePartSize < 1) minAllowablePartSize = 1;
 	assert(maxAllowablePartSize >= optSize);
 	assert(minAllowablePartSize <= optSize);
 
@@ -253,7 +257,7 @@ edgeweight MultiLevelPartitioner::fiducciaMatheysesStep(const Graph& g, Partitio
 			/**
 			 * this next line looks daunting, but just takes the partition with the largest size (map entry in partitionSizes) and divides its size by the optimal size to get the imbalance
 			 */
-			imbalance.push_back(double((*std::max_element(partitionSizes.begin(), partitionSizes.end(), [](const pair<index, count>& a, const pair<index, count>& b){return a.second < b.second;})).second) / optSize);
+			imbalance.push_back(double((*std::max_element(partitionSizes.begin(), partitionSizes.end(), [](const pair<index, count>& a, const pair<index, count>& b){return a.second < b.second;})).second) / optSize - 1);
 
 			//update counter and possibly abort early
 			if (topGain > 0) {
@@ -302,7 +306,7 @@ edgeweight MultiLevelPartitioner::fiducciaMatheysesStep(const Graph& g, Partitio
 	int maxIndex = -1;
 	edgeweight maxGain = 0;
 	for (index i = 0; i < testedNodes; i++) {
-		if (gains[i] > maxGain) {
+		if (gains[i] > maxGain && imbalance[i] <= maxImbalance) {
 			maxIndex = i;
 			maxGain = gains[i];
 		}
