@@ -24,9 +24,8 @@ class MultiLevelPartitioner : public Algorithm {
 	friend class PartitionerGTest;
 
 public:
-	MultiLevelPartitioner(const Graph& G, count numParts = 10, double maxImbalance = 2, bool bisectRecursivelyForInitialPartitioning = false, const std::vector<index>& chargedVertices = {});
+	MultiLevelPartitioner(const Graph& G, count numParts = 10, double maxImbalance = 2, bool bisectRecursivelyForInitialPartitioning = false, const std::vector<index>& chargedVertices = {}, bool avoidSurroundedNodes = false);
 
-	//Partitioner(const Graph& G, const std::vector<index>& chargedVertices, double maxImbalance = 10, bool bisectRecursivelyForInitialPartitioning = true);
 	virtual ~MultiLevelPartitioner() = default;
 
 	/**
@@ -55,6 +54,7 @@ protected:
 	static Partition partitionRecursively(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const std::vector<index>& chargedVertices);
 	static Partition recursiveBisection(const Graph& g, count k);
 	static void recursiveBisection(const Graph& g, count k, Partition& input, index maskID);
+	static void repairSingleNodes(const Graph& g, Partition& intermediate);
 
 	static index getFarthestNode(const Graph& g, std::vector<index> seedNodes);
 
@@ -66,6 +66,7 @@ protected:
 	const double maxImbalance;
 	const bool bisectRecursively;
 	const std::vector<index> chargedNodes;
+	const bool noSingles;
 	Partition result;
 
 };
