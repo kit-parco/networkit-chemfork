@@ -2,6 +2,8 @@
 # cython: language_level=3
 
 #includes
+# needed for collections.Iterable
+import collections
 
 # C++ operators
 from cython.operator import dereference
@@ -164,8 +166,6 @@ cdef extern from "cpp/auxiliary/Parallelism.h" namespace "Aux":
 	int _getCurrentNumberOfThreads "Aux::getCurrentNumberOfThreads" ()
 	int _getMaxNumberOfThreads "Aux::getMaxNumberOfThreads" ()
 	void _enableNestedParallelism "Aux::enableNestedParallelism" ()
-	void _enableParallelism "Aux::enableParallelism" ()
-	void _disableParallelism "Aux::disableParallelism" ()
 
 def setNumberOfThreads(nThreads):
 	""" Set the number of OpenMP threads """
@@ -182,16 +182,6 @@ def getMaxNumberOfThreads():
 def enableNestedParallelism():
 	""" Enable nested parallelism for OpenMP"""
 	_enableNestedParallelism()
-
-def disableParallelism():
-	""" Disable parallelism for OpenMP"""
-	_disableParallelism()
-
-def enableParallelism():
-	""" Enable parallelism for OpenMP"""
-	_enableParallelism()
-
-
 
 cdef extern from "cpp/auxiliary/Random.h" namespace "Aux::Random":
 	void _setSeed "Aux::Random::setSeed" (uint64_t, bool)
@@ -1963,16 +1953,16 @@ cdef class HavelHakimiGenerator:
 		"""
 		return Graph(0).setThis(self._this.generate())
 
-cdef extern from "cpp/generators/ConfigurationModelGenerator.h":
-	cdef cppclass _ConfigurationModelGenerator "NetworKit::ConfigurationModelGenerator":
-		_ConfigurationModelGenerator(vector[count] degreeSequence, bool ignoreIfRealizable) except +
+cdef extern from "cpp/generators/EdgeSwitchingMarkovChainGenerator.h":
+	cdef cppclass _EdgeSwitchingMarkovChainGenerator "NetworKit::EdgeSwitchingMarkovChainGenerator":
+		_EdgeSwitchingMarkovChainGenerator(vector[count] degreeSequence, bool ignoreIfRealizable) except +
 		_Graph generate() except +
 		bool isRealizable() except +
 		bool getRealizable() except +
 
-cdef class ConfigurationModelGenerator:
+cdef class EdgeSwitchingMarkovChainGenerator:
 	"""
-	Configuration model graph generator for generating a random simple graph with exactly the given degree sequence.
+	Graph generator for generating a random simple graph with exactly the given degree sequence based on the Edge-Switching Markov-Chain method.
 
 	This implementation is based on the paper
 	"Random generation of large connected simple graphs with prescribed degree distribution" by Fabien Viger and Matthieu Latapy,
@@ -1994,10 +1984,10 @@ cdef class ConfigurationModelGenerator:
 	ignoreIfRealizable : bool, optional
 		If true, generate the graph even if the degree sequence is not realizable. Some nodes may get lower degrees than requested in the sequence.
 	"""
-	cdef _ConfigurationModelGenerator *_this
+	cdef _EdgeSwitchingMarkovChainGenerator *_this
 
 	def __cinit__(self, vector[count] degreeSequence, bool ignoreIfRealizable = False):
-		self._this = new _ConfigurationModelGenerator(degreeSequence, ignoreIfRealizable)
+		self._this = new _EdgeSwitchingMarkovChainGenerator(degreeSequence, ignoreIfRealizable)
 
 	def __dealloc__(self):
 		del self._this
@@ -2233,6 +2223,183 @@ cdef class PowerlawDegreeSequence:
 			The generated random degree
 		"""
 		return self._this.getDegree()
+
+cdef extern from "cpp/generators/LFRGenerator.h":
+	cdef cppclass _LFRGenerator "NetworKit::LFRGenerator"(_Algorithm):
+		_LFRGenerator(count n) except +
+		void setDegreeSequence(vector[count] degreeSequence) nogil except +
+		void generatePowerlawDegreeSequence(count avgDegree, count maxDegree, double nodeDegreeExp) nogil except +
+		void setCommunitySizeSequence(vector[count] communitySizeSequence) nogil except +
+		void setPartition(_Partition zeta) nogil except +
+		void generatePowerlawCommunitySizeSequence(count minCommunitySize, count maxCommunitySize, double communitySizeExp) nogil except +
+		void setMu(double mu) nogil except +
+		void setMu(const vector[double] & mu) nogil except +
+		void setMuWithBinomialDistribution(double mu) nogil except +
+		_Graph getGraph() except +
+		_Partition getPartition() except +
+		_Graph generate() except +
+
+cdef class LFRGenerator(Algorithm):
+	"""
+	The LFR clustered graph generator as introduced by Andrea Lancichinetti, Santo Fortunato, and Filippo Radicchi.
+
+	The community assignment follows the algorithm described in
+	"Benchmark graphs for testing community detection algorithms". The edge generation is however taken from their follow-up publication
+	"Benchmarks for testing community detection algorithms on directed and weighted graphs with overlapping communities". Parts of the
+	implementation follow the choices made in their implementation which is available at https://sites.google.com/site/andrealancichinetti/software
+	but other parts differ, for example some more checks for the realizability of the community and degree size distributions are done
+	instead of heavily modifying the distributions.
+
+	The edge-switching markov-chain algorithm implementation in NetworKit is used which is different from the implementation in the original LFR benchmark.
+
+	You need to set a degree sequence, a community size sequence and a mu using the additionally provided set- or generate-methods.
+
+	Parameters
+	----------
+	n : count
+		The number of nodes
+	"""
+	def __cinit__(self, count n):
+		self._this = new _LFRGenerator(n)
+
+	def setDegreeSequence(self, vector[count] degreeSequence):
+		"""
+		Set the given degree sequence.
+
+		Parameters
+		----------
+		degreeSequence : collections.Iterable
+			The degree sequence that shall be used by the generator
+		"""
+		with nogil:
+			(<_LFRGenerator*>(self._this)).setDegreeSequence(degreeSequence)
+		return self
+
+	def generatePowerlawDegreeSequence(self, count avgDegree, count maxDegree, double nodeDegreeExp):
+		"""
+		Generate and set a power law degree sequence using the given average and maximum degree with the given exponent.
+
+
+		Parameters
+		----------
+		avgDegree : count
+			The average degree of the created graph
+		maxDegree : count
+			The maximum degree of the created graph
+		nodeDegreeExp : double
+			The (negative) exponent of the power law degree distribution of the node degrees
+		"""
+		with nogil:
+			(<_LFRGenerator*>(self._this)).generatePowerlawDegreeSequence(avgDegree, maxDegree, nodeDegreeExp)
+		return self
+
+	def setCommunitySizeSequence(self, vector[count] communitySizeSequence):
+		"""
+		Set the given community size sequence.
+
+		Parameters
+		----------
+		communitySizeSequence : collections.Iterable
+			The community sizes that shall be used.
+		"""
+		with nogil:
+			(<_LFRGenerator*>(self._this)).setCommunitySizeSequence(communitySizeSequence)
+		return self
+
+	def setPartition(self, Partition zeta not None):
+		"""
+		Set the partition, this replaces the community size sequence and the random assignment of the nodes to communities.
+
+		Parameters
+		----------
+		zeta : Partition
+			The partition to use
+		"""
+		with nogil:
+			(<_LFRGenerator*>(self._this)).setPartition(zeta._this)
+		return self
+
+	def generatePowerlawCommunitySizeSequence(self, count minCommunitySize, count maxCommunitySize, double communitySizeExp):
+		"""
+		Generate a powerlaw community size sequence with the given minimum and maximum size and the given exponent.
+
+		Parameters
+		----------
+		minCommunitySize : count
+			The minimum community size
+		maxCommunitySize : count
+			The maximum community size
+		communitySizeExp : double
+			The (negative) community size exponent of the power law degree distribution of the community sizes
+		"""
+		with nogil:
+			(<_LFRGenerator*>(self._this)).generatePowerlawCommunitySizeSequence(minCommunitySize, maxCommunitySize, communitySizeExp)
+		return self
+
+	def setMu(self, mu):
+		"""
+		Set the mixing parameter, this is the fraction of neighbors of each node that do not belong to the node's own community.
+
+		This can either be one value for all nodes or an iterable of values for each node.
+
+		Parameters
+		----------
+		mu : double or collections.Iterable
+			The mixing coefficient(s), i.e. the factor of the degree that shall be inter-cluster degree
+		"""
+		if isinstance(mu, collections.Iterable):
+			(<_LFRGenerator*>(self._this)).setMu(<vector[double]>mu)
+		else:
+			(<_LFRGenerator*>(self._this)).setMu(<double>mu)
+		return self
+
+	def setMuWithBinomialDistribution(self, double mu):
+		"""
+		Set the internal degree of each node using a binomial distribution such that the expected mixing parameter is the given @a mu.
+
+		The mixing parameter is for each node the fraction of neighbors that do not belong to the node's own community.
+
+		Parameters
+		----------
+		mu : double
+			The expected mu that shall be used.
+		"""
+		with nogil:
+			(<_LFRGenerator*>(self._this)).setMuWithBinomialDistribution(mu)
+		return self
+
+	def getGraph(self):
+		"""
+		Return the generated Graph.
+
+		Returns
+		-------
+		Graph
+			The generated graph.
+		"""
+		return Graph().setThis((<_LFRGenerator*>(self._this)).getGraph())
+
+	def generate(self):
+		"""
+		Generates and returns the graph. Wrapper for the StaticGraphGenerator interface.
+
+		Returns
+		-------
+		Graph
+			The generated graph.
+		"""
+		return Graph().setThis((<_LFRGenerator*>(self._this)).generate())
+
+	def getPartition(self):
+		"""
+		Return the generated Partiton.
+
+		Returns
+		-------
+		Partition
+			The generated partition.
+		"""
+		return Partition().setThis((<_LFRGenerator*>(self._this)).getPartition())
 
 # Module: graphio
 
@@ -5016,7 +5183,7 @@ cdef class ApproxBetweenness(Centrality):
 
 cdef extern from "cpp/centrality/ApproxBetweenness2.h":
 	cdef cppclass _ApproxBetweenness2 "NetworKit::ApproxBetweenness2" (_Centrality):
-		_ApproxBetweenness2(_Graph, count, bool) except +
+		_ApproxBetweenness2(_Graph, count, bool, bool) except +
 
 
 cdef class ApproxBetweenness2(Centrality):
@@ -5042,7 +5209,7 @@ cdef class ApproxBetweenness2(Centrality):
 
 	def __cinit__(self, Graph G, nSamples, normalized=False, parallel=False):
 		self._G = G
-		self._this = new _ApproxBetweenness2(G._this, nSamples, normalized)
+		self._this = new _ApproxBetweenness2(G._this, nSamples, normalized, parallel)
 
 
 
@@ -5303,6 +5470,28 @@ cdef class DynApproxBetweenness:
 		"""
 
 		return self._this.getNumberOfSamples()
+
+cdef extern from "cpp/centrality/LocalPartitionCoverage.h":
+	cdef cppclass _LocalPartitionCoverage "NetworKit::LocalPartitionCoverage" (_Centrality):
+		_LocalPartitionCoverage(_Graph, _Partition) except +
+
+cdef class LocalPartitionCoverage(Centrality):
+	"""
+	The local partition coverage is the amount of neighbors of a node u that are in the same partition as u.
+
+	Parameters
+	----------
+	G : Graph
+		The graph.
+	P : Partition
+		The partition to use
+	"""
+	cdef Partition _P
+
+	def __cinit__(self, Graph G not None, Partition P not None):
+		self._G = G
+		self._P = P
+		self._this = new _LocalPartitionCoverage(G._this, P._this)
 
 # Module: dynamic
 
@@ -7342,27 +7531,6 @@ cdef class AdamicAdarDistance:
 
 # Module: sparsification
 
-cdef extern from "cpp/sparsification/ChungLuScore.h":
-	cdef cppclass _ChungLuScore "NetworKit::ChungLuScore"(_EdgeScore[double]):
-		_ChungLuScore(const _Graph& G) except +
-
-cdef class ChungLuScore(EdgeScore):
-	"""
-	Chung-Lu based score.
-
-	Parameters
-	----------
-	G : Graph
-		The input graph.
-	"""
-
-	def __cinit__(self, Graph G):
-		self._G = G
-		self._this = new _ChungLuScore(G._this)
-
-	cdef bool isDoubleValue(self):
-		return True
-
 cdef extern from "cpp/sparsification/SimmelianOverlapScore.h":
 	cdef cppclass _SimmelianOverlapScore "NetworKit::SimmelianOverlapScore"(_EdgeScore[double]):
 		_SimmelianOverlapScore(const _Graph& G, const vector[count]& triangles, count maxRank) except +
@@ -7679,31 +7847,6 @@ cdef class SCANStructuralSimilarityScore(EdgeScore):
 		self._G = G
 		self._triangles = triangles
 		self._this = new _SCANStructuralSimilarityScore(G._this, self._triangles)
-
-	cdef bool isDoubleValue(self):
-		return True
-
-cdef extern from "cpp/sparsification/NodeNormalizedTriangleScore.h":
-	cdef cppclass _NodeNormalizedTriangleScore "NetworKit::NodeNormalizedTriangleScore"(_EdgeScore[double]):
-		_NodeNormalizedTriangleScore(_Graph G, const vector[count]& triangles) except +
-
-cdef class NodeNormalizedTriangleScore(EdgeScore):
-	"""
-	Divide the number of triangles per edge by the average number of triangles of the incident nodes.
-
-	Parameters
-	----------
-	G : Graph
-		The input graph.
-	triangles : vector[count]
-		Triangle count.
-	"""
-	cdef vector[count] _triangles
-
-	def __cinit__(self, Graph G, vector[count] triangles):
-		self._G = G
-		self._triangles = triangles
-		self._this = new _NodeNormalizedTriangleScore(G._this, self._triangles)
 
 	cdef bool isDoubleValue(self):
 		return True
