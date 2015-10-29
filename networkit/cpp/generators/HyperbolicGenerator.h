@@ -22,6 +22,7 @@ typedef index node; // node indices are 0-based
 
 class HyperbolicGenerator: public NetworKit::StaticGraphGenerator {
 public:
+
 	/**
 	 * @param[in] n Number of nodes
 	 * @param[in] m Target number of edges
