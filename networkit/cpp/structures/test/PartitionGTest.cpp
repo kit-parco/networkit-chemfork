@@ -291,7 +291,7 @@ TEST_F(PartitionGTest, testImbalance) {
 	p.allToSingletons();
 	EXPECT_EQ(n, p.numberOfElements());
 	EXPECT_EQ(0, p.getImbalance(10));
-	EXPECT_EQ(1, p.getImbalance(20));
+	EXPECT_EQ(0, p.getImbalance(20));
 	for (index i = 0; i < n; i++) {
 		if (i < n/2) p.moveToSubset(0, i);
 		else p.moveToSubset(1, i);
