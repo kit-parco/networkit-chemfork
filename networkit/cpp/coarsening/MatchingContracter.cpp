@@ -39,11 +39,6 @@ void MatchingContracter::run() {
 		assert(mapFineToCoarse[v] < cn);
 	});
 
-//	for (node v = 0; v < n; ++v) {
-//		std::cout << v << " maps to " << mapFineToCoarse[v] << std::endl;
-//	}
-//	std::cout << "matching size: " << M.matchingSize() << std::endl;
-
 	G.forNodes([&](node v) { // TODO: difficult in parallel
 		G.forNeighborsOf(v, [&](node u, edgeweight ew) {
 			node cv = mapFineToCoarse[v];
