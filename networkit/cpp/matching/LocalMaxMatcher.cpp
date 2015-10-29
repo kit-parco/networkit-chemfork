@@ -11,7 +11,7 @@ namespace NetworKit {
 
 LocalMaxMatcher::LocalMaxMatcher(const Graph& graph, const std::vector<index> chargedVertices): Matcher(graph), chargedVertices(chargedVertices)
 {
-
+	if (graph.isDirected()) throw std::runtime_error("Matcher only defined for undirected graphs");
 }
 
 // TODO: update to new edge attribute system
