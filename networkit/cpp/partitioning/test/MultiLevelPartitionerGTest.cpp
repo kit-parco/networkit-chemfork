@@ -199,7 +199,7 @@ TEST_F(MultiLevelPartitionerGTest, testPartitionerOnBarabasiAlbert) {
 	/**
 	 * generate graph
 	 */
-	BarabasiAlbertGenerator gen(10, 2000, 10);
+	BarabasiAlbertGenerator gen(10, 500, 10);
 	Graph G =  gen.generate();
 
 	const count targetK = 10;
