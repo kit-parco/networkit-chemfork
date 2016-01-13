@@ -2847,6 +2847,18 @@ cdef class Partition:
 		"""
 		return self._this.numberOfElements()
 
+	def __str__(self):
+		"""
+		Returns
+		-------
+		str
+			String representation of this partition
+		"""
+		result = "NetworKit::Partition:"
+		for index in range(self._this.numberOfElements()):
+			result += "\n" + str(index) + ":" + str(self._this[index])
+		return result
+
 	def __getitem__(self, index e):
 		""" Get the set (id) in which the element `e` is contained.
 
@@ -2973,8 +2985,10 @@ cdef class Partition:
 		self._this.mergeSubsets(s, t)
 
 	def __getitem__(self, index):
-		return self._this[index]
-
+		if index < self._this.numberOfElements():
+			return self._this[index]
+		else:
+			raise IndexError()
 
 	def setUpperBound(self, index upper):
 		""" Sets an upper bound for the subset ids that **can** be assigned.
