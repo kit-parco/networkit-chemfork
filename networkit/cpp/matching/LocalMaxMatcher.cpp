@@ -1,8 +1,7 @@
 /*
- * ParallelMatcher.cpp
+ * LocalMaxMatcher.cpp
  *
  *  Created on: 05.12.2012
- *      Author: Christian Staudt (christian.staudt@kit.edu)
  */
 
 #include "LocalMaxMatcher.h"
@@ -18,10 +17,9 @@ LocalMaxMatcher::LocalMaxMatcher(const Graph& graph, const std::vector<index> ch
 // TODO: make local max matching parallel
 
 
-Matching LocalMaxMatcher::run() {
+void LocalMaxMatcher::run() {
 	int64_t z = G.upperNodeIdBound();
 	count E = G.numberOfEdges();
-	Matching M(z);
 
 	// put edges into array of triples
 	struct MyEdge {
@@ -87,7 +85,6 @@ Matching LocalMaxMatcher::run() {
 		E = edges.size();
 	}
 
-	return M;
 }
 
 } /* namespace NetworKit */

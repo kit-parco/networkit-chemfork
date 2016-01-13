@@ -406,8 +406,6 @@ TEST_F(CentralityGTest, testApproxClosenessCentralityOnDisconnectedGraph) {
 	acc.run();
 	std::vector<double> cc = acc.scores();
 
-	double maximum = acc.maximum(); // FIXME: unused var!
-
 	const double tol = 0.35;
 	EXPECT_NEAR(0, cc[4], tol);
 	EXPECT_NEAR(1.0, cc[1], tol);
@@ -767,6 +765,10 @@ TEST_F(CentralityGTest, testLocalClusteringCoefficientUndirected) {
 	std::vector<double> reference = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.8, 0.8, 0.8, 0.6666666666666666, 0.0, 0.8, 0.5, 0.0};
 
  	EXPECT_EQ(reference,lccScores);
+
+	LocalClusteringCoefficient lccTurbo(G, true);
+	lccTurbo.run();
+	EXPECT_EQ(reference, lccTurbo.scores());
 
 	// test throw runtime error for self-loop in graph
 	Graph H(2);

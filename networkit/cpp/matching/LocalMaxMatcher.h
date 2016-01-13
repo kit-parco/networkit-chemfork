@@ -27,7 +27,7 @@ public:
 	LocalMaxMatcher(const Graph& G, const std::vector<index> chargedVertices = {});
 
 
-	virtual Matching run();
+	virtual void run();
 
 protected:
 	const std::vector<index> chargedVertices;

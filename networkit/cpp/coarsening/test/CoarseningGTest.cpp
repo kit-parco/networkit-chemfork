@@ -17,7 +17,7 @@
 #include "../../coarsening/ParallelPartitionCoarsening.h"
 #include "../../io/METISGraphReader.h"
 #include "../../matching/LocalMaxMatcher.h"
-#include "../MatchingContracter.h"
+#include "../MatchingCoarsening.h"
 
 namespace NetworKit {
 
@@ -34,7 +34,7 @@ TEST_F(CoarseningGTest, testClusteringProjectorWithOneClustering) {
 	contract.run();
 	std::vector<std::vector<node> > maps;
 	Graph G1 = contract.getCoarseGraph();
-	maps.push_back(contract.getNodeMapping());
+	maps.push_back(contract.getFineToCoarseNodeMapping());
 
 	Partition zeta1 = clusteringGen.makeOneClustering(G1);
 
@@ -58,7 +58,7 @@ TEST_F(CoarseningGTest, testClusteringProjectorWithSingletonClustering) {
 	contract.run();
 	std::vector<std::vector<node> > maps;
 	Graph G1 = contract.getCoarseGraph();
-	maps.push_back(contract.getNodeMapping());
+	maps.push_back(contract.getFineToCoarseNodeMapping());
 
 	Partition zeta1 = clusteringGen.makeSingletonClustering(G1);
 
@@ -160,8 +160,8 @@ TEST_F(CoarseningGTest, testParallelPartitionCoarseningOnRealGraph) {
 
 	EXPECT_EQ(Gseq.numberOfEdges(), Gpar.numberOfEdges()) << "sequential and parallel coarsening should produce the same number of edges";
 
-	auto parMapping = parCoarsening.getNodeMapping();
-	auto seqMapping = seqCoarsening.getNodeMapping();
+	auto parMapping = parCoarsening.getFineToCoarseNodeMapping();
+	auto seqMapping = seqCoarsening.getFineToCoarseNodeMapping();
 	Gseq.forNodes([&](node u) {
 		EXPECT_EQ(Gseq.degree(u), Gpar.degree(u)) << "node degrees should be equal for node " << u;
 		EXPECT_EQ(Gseq.weightedDegree(u), Gpar.weightedDegree(u)) << "Weighted degrees should be equald for node " << u;
@@ -190,8 +190,8 @@ TEST_F(CoarseningGTest, testParallelPartitionCoarseningOnRealGraphWithGraphBuild
 
 	EXPECT_EQ(Gseq.numberOfEdges(), Gpar.numberOfEdges()) << "sequential and parallel coarsening should produce the same number of edges";
 
-	auto parMapping = parCoarsening.getNodeMapping();
-	auto seqMapping = seqCoarsening.getNodeMapping();
+	auto parMapping = parCoarsening.getFineToCoarseNodeMapping();
+	auto seqMapping = seqCoarsening.getFineToCoarseNodeMapping();
 	Gseq.forNodes([&](node u) {
 		EXPECT_EQ(Gseq.degree(u), Gpar.degree(u)) << "node degrees should be equal for node " << u;
 		EXPECT_EQ(Gseq.weightedDegree(u), Gpar.weightedDegree(u)) << "Weighted degrees should be equal for node " << u;
@@ -220,8 +220,8 @@ TEST_F(CoarseningGTest, testParallelPartitionCoarseningOnRealGraphWithGraphBuild
 
 	EXPECT_EQ(Gseq.numberOfEdges(), Gpar.numberOfEdges()) << "sequential and parallel coarsening should produce the same number of edges";
 
-	auto parMapping = parCoarsening.getNodeMapping();
-	auto seqMapping = seqCoarsening.getNodeMapping();
+	auto parMapping = parCoarsening.getFineToCoarseNodeMapping();
+	auto seqMapping = seqCoarsening.getFineToCoarseNodeMapping();
 	Gseq.forNodes([&](node u) {
 		EXPECT_EQ(Gseq.degree(u), Gpar.degree(u)) << "node degrees should be equal for node " << u;
 		EXPECT_EQ(Gseq.weightedDegree(u), Gpar.weightedDegree(u)) << "Weighted degrees should be equal for node " << u;
@@ -234,13 +234,14 @@ TEST_F(CoarseningGTest, testMatchingContractor) {
 	Graph G = reader.read("input/celegans_metabolic.graph");
 
 	LocalMaxMatcher matcher(G);
-    Matching matching = matcher.run();
+	matcher.run();
+    Matching matching = matcher.getMatching();
     ASSERT_TRUE(matching.isProper(G));
 
-    MatchingContracter coarsener(G, matching);
+    MatchingCoarsening coarsener(G, matching);
     coarsener.run();
     Graph coarseG = coarsener.getCoarseGraph();
-    std::vector<node> fineToCoarse = coarsener.getNodeMapping();
+    std::vector<node> fineToCoarse = coarsener.getFineToCoarseNodeMapping();
 
    EXPECT_GE(coarseG.numberOfNodes(), 0.5*G.numberOfNodes());
    EXPECT_EQ(G.totalEdgeWeight(), coarseG.totalEdgeWeight());
@@ -255,12 +256,13 @@ TEST_F(CoarseningGTest, testMatchingContractorWithSelfLoop) {
 	G.addEdge(0,0,2);
 
 	LocalMaxMatcher matcher(G);
-    Matching matching = matcher.run();
+	matcher.run();
+    Matching matching = matcher.getMatching();
     EXPECT_FALSE(matching.areMatched(0,0));
     EXPECT_TRUE(matching.areMatched(1,0));
     ASSERT_TRUE(matching.isProper(G));
 
-    MatchingContracter coarsener(G, matching);
+    MatchingCoarsening coarsener(G, matching);
     coarsener.run();
     Graph coarseG = coarsener.getCoarseGraph();
     EXPECT_EQ(1, coarseG.numberOfNodes());

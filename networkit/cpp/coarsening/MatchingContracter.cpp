@@ -16,7 +16,7 @@ MatchingContracter::MatchingContracter(const Graph& G, const Matching& M, bool n
 void MatchingContracter::run() {
 	count n = G.numberOfNodes();
 	index z = G.upperNodeIdBound();
-	count cn = n - M.size();
+	count cn = n - M.size(G);
 	Graph cG(cn, true);
 
 	// compute map: old ID -> new coarse ID
@@ -49,7 +49,7 @@ void MatchingContracter::run() {
 		});
 	});
 
-	Gcoarsed = std::move(cG);
+	Gcoarsened = std::move(cG);
 	nodeMapping = std::move(mapFineToCoarse);
 	hasRun = true;
 }

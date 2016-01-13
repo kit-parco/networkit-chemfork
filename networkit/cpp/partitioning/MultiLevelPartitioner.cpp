@@ -81,12 +81,13 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 	else {
 	   // recursive coarsening
 	   LocalMaxMatcher matcher(G, chargedVertices);
-	   Matching matching = matcher.run();
+	   matcher.run();
+	   Matching matching = matcher.getMatching();
 	   assert(matching.isProper(G));
 	   MatchingContracter coarsener(G, matching);
 	   coarsener.run();
 	   Graph coarseG = coarsener.getCoarseGraph();
-	   std::vector<node> fineToCoarse = coarsener.getNodeMapping();
+	   std::vector<node> fineToCoarse = coarsener.getFineToCoarseNodeMapping();
 
 
 	   // map charged vertices to coarser nodes

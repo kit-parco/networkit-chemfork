@@ -2,7 +2,6 @@
  * Matching.h
  *
  *  Created on: 03.12.2012
- *      Author: Christian Staudt (christian.staudt@kit.edu)
  */
 
 #ifndef MATCHING_H_
@@ -15,7 +14,6 @@ namespace NetworKit {
 
 /**
  * @ingroup matching
- * FIXME: Could be better to store a reference to the according graph;
  */
 class Matching {
 
@@ -25,12 +23,9 @@ public:
 	/**
 	 * Construct new Matching.
 	 *
-	 * @param[in]	n 	Maximum number of nodes.
+	 * @param[in]	z	Maximum number of nodes.
 	 */
-	Matching(uint64_t n);
-
-	/** Default destructor */
-	virtual ~Matching() = default;
+	Matching(count z=0);
 
 
 	/**
@@ -39,7 +34,7 @@ public:
 	 * @param[in] u node.
 	 * @param[in] v node.
 	 */
-	void match(const node& u, const node& v);
+	void match(node u, node v);
 
 
 	/**
@@ -48,7 +43,7 @@ public:
 	 * @param[in] u node.
 	 * @param[in] v node.
 	 */
-	void unmatch(const node& u, const node& v);
+	void unmatch(node u, node v);
 
 
 	/**
@@ -57,7 +52,7 @@ public:
 	 * @param[in]	u 	node.
 	 * @return @c true if u is matched.
 	 */
-	bool isMatched(const node& u) const;
+	bool isMatched(node u) const;
 
 
 	/**
@@ -66,7 +61,7 @@ public:
 	 * @param[in] u node.
 	 * @param[in] v node.
 	 */
-	bool areMatched(const node& u, const node& v) const;
+	bool areMatched(node u, node v) const;
 
 	/**
 	 * Check whether this is a proper matching
@@ -82,7 +77,7 @@ public:
 	 * Get the number of edges in this matching.
 	 * @return Number of edges in matching.
 	 */
-	count size() const;
+	count size(const Graph& G) const;
 
 	/**
 	 * Get the matched neighbor of @a v if it exists, otherwise @c none.
@@ -97,12 +92,13 @@ public:
 	 * @param[in] g The corresponding graph.
 	 * @return Total weight of edges in this matching.
 	 */
-	edgeweight weight(const Graph& g) const;
+	edgeweight weight(const Graph& G) const;
 
 protected:
 
+//	const Graph& G;		// reference to graph
 	std::vector<node> data; //!< storage of matching nodes
-	count n; //!< number of nodes
+	// count n; //!< number of nodes
 };
 
 } /* namespace NetworKit */
