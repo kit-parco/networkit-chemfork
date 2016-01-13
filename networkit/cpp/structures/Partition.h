@@ -294,6 +294,19 @@ public:
 	std::set<index> getSubsetIds() const;
 
 	/**
+	 * Computes the weight of the k-way cut represented by this partition
+	 *
+	 * @return the weight sum
+	 */
+	edgeweight calculateCutWeight(const Graph& G);
+
+	/**
+	 *
+	 */
+	double getImbalance(count desiredPartitions);
+
+
+	/**
 	 * Set a human-readable identifier @a name for the instance.
 	 *
 	 * @param name The name.

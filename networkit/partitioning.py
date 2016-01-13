@@ -1,5 +1,9 @@
+"""
+This module provides graph partitioners.
+"""
+
 # extension imports
-from _NetworKit import Partition, Modularity
+from _NetworKit import Partition, Modularity, MultiLevelPartitioner
 
 # local imports
 from .algebraic import laplacianEigenvectors
@@ -26,7 +30,7 @@ def computeEdgeCut(partition, graph):
 	return cut
 
 def computeImbalance(partition, graph):
-	desired = graph.numberOfNodes() / float(partition.numberOfSubsets())
+	desired = math.ceil(graph.numberOfNodes() / float(partition.numberOfSubsets()))
 
 	maximum = max(partition.subsetSizes())
 
