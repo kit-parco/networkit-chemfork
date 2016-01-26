@@ -298,12 +298,12 @@ public:
 	 *
 	 * @return the weight sum
 	 */
-	edgeweight calculateCutWeight(const Graph& G);
+	edgeweight calculateCutWeight(const Graph& G) const;
 
 	/**
 	 *
 	 */
-	double getImbalance(count desiredPartitions);
+	double getImbalance(count desiredPartitions) const;
 
 
 	/**

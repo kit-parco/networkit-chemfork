@@ -180,7 +180,7 @@ std::set<index> Partition::getSubsetIds() const {
 	return ids;
 }
 
-edgeweight Partition::calculateCutWeight(const Graph& G) {
+edgeweight Partition::calculateCutWeight(const Graph& G) const {
 	assert(G.numberOfNodes() == numberOfElements());
 	edgeweight result = 0;
 	G.forEdges([&](index u, index v){
@@ -191,7 +191,7 @@ edgeweight Partition::calculateCutWeight(const Graph& G) {
 	return result;
 }
 
-double Partition::getImbalance(count desiredPartitions) {
+double Partition::getImbalance(count desiredPartitions) const {
 	double optimalSize = ceil(double(numberOfElements()) / desiredPartitions);
 	double maxSize = 0;
 	for (auto entry : subsetSizeMap()) {
