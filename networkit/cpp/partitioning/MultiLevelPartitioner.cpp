@@ -23,17 +23,28 @@ using Aux::PrioQueue;
 
 namespace NetworKit {
 
-MultiLevelPartitioner::MultiLevelPartitioner(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const vector<index>& chargedVertices, bool avoidSingleNodes) : Algorithm(), G(G), numParts(numParts), charged(chargedVertices.size() > 0), maxImbalance(maxImbalance), bisectRecursively(bisectRecursively), chargedNodes(chargedVertices), noSingles(avoidSingleNodes), result(0) {
+MultiLevelPartitioner::MultiLevelPartitioner(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const vector<index>& chargedVertices, bool avoidSingleNodes, Partition previous) : Algorithm(), G(G), numParts(numParts), maxImbalance(maxImbalance), bisectRecursively(bisectRecursively), chargedNodes(chargedVertices), noSingles(avoidSingleNodes), result(0) {
 	if (G.numberOfSelfLoops() > 0) throw std::runtime_error("Graph must not have self-loops.");
 	if (chargedNodes.size() > numParts) throw std::runtime_error("Cannot have more charged nodes than partitions.");
-	if (bisectRecursively && charged) throw std::runtime_error("If using charged nodes, use region growing for the initial graph.");
+	if (bisectRecursively && chargedNodes.size() > 0) throw std::runtime_error("If using charged nodes, use region growing for the initial graph.");
 	for (index i : chargedVertices) {
 		if (!G.hasNode(i)) throw std::runtime_error("At least one of the charged nodes is missing from the graph.");
+	}
+	count n = G.numberOfNodes();
+	if (previous.numberOfElements() == 0) {
+		previousPartition = Partition(n);
+		previousPartition.allToOnePartition();
+		assert(previousPartition.numberOfSubsets() == 1);
+	} else {
+		if (previous.numberOfElements() != n) {
+			throw std::runtime_error("Previous partition given, but of wrong size.");
+		}
+		previousPartition = previous;
 	}
 }
 
 void MultiLevelPartitioner::run() {
-	result = partitionRecursively(G, numParts, maxImbalance, bisectRecursively, chargedNodes);
+	result = partitionRecursively(G, numParts, maxImbalance, bisectRecursively, chargedNodes, previousPartition);
 
 	/**
 	 * make sure that the partition is balanced. Only necessary if the balance constraint was relaxed during the multi-level-partitioning
@@ -46,10 +57,11 @@ void MultiLevelPartitioner::run() {
 	hasRun = true;
 }
 
-Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const std::vector<index>& chargedVertices) {
+Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const std::vector<index>& chargedVertices, const Partition& previous) {
 	const count n = G.numberOfNodes();
 	const count m = G.numberOfEdges();
 	const bool chargePresent = chargedVertices.size() > 0;
+	assert(previous.numberOfElements() == n);
 
 	DEBUG("Partitioning graph with ", n, " nodes, ", m, " edges and total edge weight ",  G.totalEdgeWeight() , " into ", numParts, " parts.");
 
@@ -72,15 +84,36 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 	   }
 
 	   ClusteringGenerator gen;
-	   initial = gen.makeContinuousBalancedClustering(G, numParts);
+	   Partition naiveInitial = gen.makeContinuousBalancedClustering(G, numParts);
+
+	   //if (naiveInitial.calculateCutWeight(G) < initial.calculateCutWeight(G)) {
+		   initial = naiveInitial;
+	//	   DEBUG("Replaced initial partition with naive solution, since it was better.");
+	  // }
+
+
+	   bool previousValid = previous.numberOfElements() == n && previous.getImbalance(numParts) <= maxImbalance && chargesValid(previous, chargedVertices);
+	   if (previousValid && previous.calculateCutWeight(G) < initial.calculateCutWeight(G)) {
+		   initial = previous;
+	   }
 
 	   count initialK = initial.numberOfSubsets();
 	   DEBUG("Initial solution has ", initialK, " partitions, a cut of ", initial.calculateCutWeight(G), " and an imbalance of ", initial.getImbalance(numParts));
 	   return initial;
 	}
 	else {
-	   // recursive coarsening
-	   LocalMaxMatcher matcher(G, chargedVertices);
+
+		//get cut edges
+		std::vector<std::pair<node, node> > forbiddenEdges;
+		G.forEdges([&](node u, node v, edgeweight w) {
+			if (previous[u] != previous[v]) {
+				forbiddenEdges.push_back(std::make_pair(u,v));
+			}
+		});
+		assert(forbiddenEdges.size() < G.numberOfEdges());
+
+		// recursive coarsening
+	   LocalMaxMatcher matcher(G, chargedVertices, forbiddenEdges);
 	   matcher.run();
 	   Matching matching = matcher.getMatching();
 	   assert(matching.isProper(G));
@@ -89,6 +122,16 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 	   Graph coarseG = coarsener.getCoarseGraph();
 	   std::vector<node> fineToCoarse = coarsener.getFineToCoarseNodeMapping();
 
+	   Partition coarsePrevious(coarseG.numberOfNodes());
+	   coarsePrevious.allToSingletons();
+
+	   for (node v : G.nodes()) {
+		   node coarseNode = fineToCoarse[v];
+		   index coarsePart = previous[v];
+		   coarsePrevious.moveToSubset(previous[v], fineToCoarse[v]);
+	   }
+	   coarsePrevious.compact();
+	   assert(coarsePrevious.numberOfSubsets() == previous.numberOfSubsets());
 
 	   // map charged vertices to coarser nodes
 	   vector<index> coarseCharged;
@@ -97,7 +140,7 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 	   }
 
 	   // recursive call
-	   Partition coarsePart = partitionRecursively(coarseG, numParts, maxImbalance, bisectRecursively, coarseCharged);
+	   Partition coarsePart = partitionRecursively(coarseG, numParts, maxImbalance, bisectRecursively, coarseCharged, coarsePrevious);
 
 	   // interpolation
 	   ClusteringProjector projector;
@@ -136,7 +179,7 @@ edgeweight MultiLevelPartitioner::fiducciaMatheysesStep(const Graph& g, Partitio
 	/**
 	 * magic numbers
 	 */
-	const count KarypisKumarStoppingCriterion = 20;
+	const count KarypisKumarStoppingCriterion = 20;//currently unused
 	count movesWithoutImprovement = 0;
 
 	/**

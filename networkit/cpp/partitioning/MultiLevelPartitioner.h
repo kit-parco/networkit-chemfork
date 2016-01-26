@@ -24,7 +24,8 @@ class MultiLevelPartitioner : public Algorithm {
 	friend class PartitionerGTest;
 
 public:
-	MultiLevelPartitioner(const Graph& G, count numParts = 10, double maxImbalance = 2, bool bisectRecursivelyForInitialPartitioning = false, const std::vector<index>& chargedVertices = {}, bool avoidSurroundedNodes = false);
+	MultiLevelPartitioner(const Graph& G, count numParts = 10, double maxImbalance = 2, bool bisectRecursivelyForInitialPartitioning = false, const std::vector<index>& chargedVertices = {}, bool avoidSurroundedNodes = false, Partition previous = Partition(0));
+
 
 	virtual ~MultiLevelPartitioner() = default;
 
@@ -51,7 +52,7 @@ public:
 
 protected:
 	static void enforceBalance(const Graph& G, Partition& part, double maxImbalance = 0.03, const std::vector<index>& chargedVertices = {});
-	static Partition partitionRecursively(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const std::vector<index>& chargedVertices);
+	static Partition partitionRecursively(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const std::vector<index>& chargedVertices, const Partition& previous);
 	static Partition recursiveBisection(const Graph& g, count k);
 	static void recursiveBisection(const Graph& g, count k, Partition& input, index maskID);
 	static void repairSingleNodes(const Graph& g, Partition& intermediate);
@@ -60,14 +61,25 @@ protected:
 
 	static std::pair<index, index> getMaximumDistancePair(const Graph& g, const Partition& constraint, const index partition);
 
+	static bool chargesValid(const Partition& part, const std::vector<index>& chargedVertices) {
+		for (node u : chargedVertices) {
+			for (node v : chargedVertices) {
+				if (part[u] == part[v] && u != v) {
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+
 	const Graph& G;
 	const count numParts;
-	const bool charged;
 	const double maxImbalance;
 	const bool bisectRecursively;
 	const std::vector<index> chargedNodes;
 	const bool noSingles;
 	Partition result;
+	Partition previousPartition;
 
 };
 
