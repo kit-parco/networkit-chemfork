@@ -44,24 +44,27 @@ MultiLevelPartitioner::MultiLevelPartitioner(const Graph& G, count numParts, dou
 }
 
 void MultiLevelPartitioner::run() {
-	result = partitionRecursively(G, numParts, maxImbalance, bisectRecursively, chargedNodes, previousPartition);
+	count n = G.numberOfNodes();
+
+	std::vector<double> dummyWeights(n, 1);
+	result = partitionRecursively(G, numParts, maxImbalance, bisectRecursively, chargedNodes, previousPartition, dummyWeights);
 
 	/**
 	 * make sure that the partition is balanced. Only necessary if the balance constraint was relaxed during the multi-level-partitioning
 	 */
-	enforceBalance(G, result, maxImbalance, chargedNodes);
-	fiducciaMatheysesStep(G, result, maxImbalance, chargedNodes);
+	enforceBalance(G, result, maxImbalance, chargedNodes, dummyWeights);
+	fiducciaMatheysesStep(G, result, maxImbalance, chargedNodes, dummyWeights);
 
 	if (noSingles) repairSingleNodes(G, result);
 
 	hasRun = true;
 }
 
-Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const std::vector<index>& chargedVertices, const Partition& previous) {
+Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const std::vector<index>& chargedVertices, const Partition& previous, const std::vector<double> &nodeWeights) {
 	const count n = G.numberOfNodes();
 	const count m = G.numberOfEdges();
-	const bool chargePresent = chargedVertices.size() > 0;
 	assert(previous.numberOfElements() == n);
+	assert(nodeWeights.size() == n);
 
 	DEBUG("Partitioning graph with ", n, " nodes, ", m, " edges and total edge weight ",  G.totalEdgeWeight() , " into ", numParts, " parts.");
 
@@ -80,16 +83,16 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 			   index farthestNode = getFarthestNode(G, startingPoints);
 			   startingPoints.push_back(farthestNode);
 			}
-		   initial = growRegions(G, startingPoints);
+		   initial = growRegions(G, startingPoints);//TODO: adapt region growing to accept node weights
 	   }
 
 	   ClusteringGenerator gen;
 	   Partition naiveInitial = gen.makeContinuousBalancedClustering(G, numParts);
 
-	   //if (naiveInitial.calculateCutWeight(G) < initial.calculateCutWeight(G)) {
+	   if (chargesValid(naiveInitial, chargedVertices) && naiveInitial.calculateCutWeight(G) < initial.calculateCutWeight(G)) {
 		   initial = naiveInitial;
-	//	   DEBUG("Replaced initial partition with naive solution, since it was better.");
-	  // }
+		   DEBUG("Replaced initial partition with naive solution, since it was better.");
+	   }
 
 
 	   bool previousValid = previous.numberOfElements() == n && previous.getImbalance(numParts) <= maxImbalance && chargesValid(previous, chargedVertices);
@@ -125,10 +128,15 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 	   Partition coarsePrevious(coarseG.numberOfNodes());
 	   coarsePrevious.allToSingletons();
 
+	   //map node weights and previous partition
+	   vector<double> coarseWeights(coarseG.numberOfNodes(), 0);
+
 	   for (node v : G.nodes()) {
 		   node coarseNode = fineToCoarse[v];
 		   index coarsePart = previous[v];
-		   coarsePrevious.moveToSubset(previous[v], fineToCoarse[v]);
+		   coarsePrevious.moveToSubset(coarsePart, coarseNode);
+
+		   coarseWeights[coarseNode] += nodeWeights[v];
 	   }
 	   coarsePrevious.compact();
 	   assert(coarsePrevious.numberOfSubsets() == previous.numberOfSubsets());
@@ -140,7 +148,7 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 	   }
 
 	   // recursive call
-	   Partition coarsePart = partitionRecursively(coarseG, numParts, maxImbalance, bisectRecursively, coarseCharged, coarsePrevious);
+	   Partition coarsePart = partitionRecursively(coarseG, numParts, maxImbalance, bisectRecursively, coarseCharged, coarsePrevious, coarseWeights);
 
 	   // interpolation
 	   ClusteringProjector projector;
@@ -150,18 +158,19 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 	   double preBalancingImbalance = finePart.getImbalance(numParts);
 	   count preBalancingK = finePart.numberOfSubsets();
 
-	   enforceBalance(G, finePart, maxImbalance, chargedVertices);
+	   enforceBalance(G, finePart, maxImbalance, chargedVertices, nodeWeights);
 
 	   edgeweight preRefinementCut = finePart.calculateCutWeight(G);
 	   double preRefinementImbalance = finePart.getImbalance(numParts);
 	   count preRefinementK = finePart.numberOfSubsets();
+	   assert(preBalancingK == preRefinementK);
 
 		DEBUG("Rebalancing, n: ", n, ", cut: ", preBalancingCut, "->", preRefinementCut, ", imbalance:", preBalancingImbalance, "->", preRefinementImbalance);
 
 	   // local refinement with Fiduccia-Matheyses
 	   edgeweight gain;
 	   do {
-			gain = fiducciaMatheysesStep(G, finePart, maxImbalance, chargedVertices);
+			gain = fiducciaMatheysesStep(G, finePart, maxImbalance, chargedVertices, nodeWeights);
 			assert(gain == gain);
 			TRACE("Found gain ", gain, " in FM-step with ", G.numberOfNodes(), " nodes and ", finePart.numberOfSubsets(), " partitions.");
 	   } while (gain > 0);
@@ -174,8 +183,8 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 	   return finePart;
 	}
 }
-
-edgeweight MultiLevelPartitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part, double maxImbalance, const std::vector<index> chargedVertices) {
+//TODO: the node weights are currently copied, this could be improved
+edgeweight MultiLevelPartitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part, double maxImbalance, const std::vector<index> chargedVertices, std::vector<double> nodeWeights) {
 	/**
 	 * magic numbers
 	 */
@@ -188,6 +197,12 @@ edgeweight MultiLevelPartitioner::fiducciaMatheysesStep(const Graph& g, Partitio
 	const count n = part.numberOfElements();
 	const count z = g.upperNodeIdBound();
 	const count k = part.numberOfSubsets();
+
+	if (nodeWeights.size() == 0) {
+		nodeWeights.resize(n, 1);
+	}
+	assert(nodeWeights.size() == n);
+
 	const auto subsetIds = part.getSubsetIds();
 	vector<index> bestTargetPartition(z);
 	std::map<index, count> partitionSizes = part.subsetSizeMap();
@@ -649,7 +664,7 @@ index MultiLevelPartitioner::getFarthestNode(const Graph& G, std::vector<index> 
 	return nextNode;
 }
 
-void MultiLevelPartitioner::enforceBalance(const Graph& G, Partition& part, double maxImbalance, const vector<index>& chargedVertices) {
+void MultiLevelPartitioner::enforceBalance(const Graph& G, Partition& part, double maxImbalance, const vector<index>& chargedVertices, const std::vector<double>& nodeWeights) {
 	const count n = G.numberOfNodes();
 	const count z = G.upperNodeIdBound();
 	const count k = part.numberOfSubsets();
@@ -671,7 +686,6 @@ void MultiLevelPartitioner::enforceBalance(const Graph& G, Partition& part, doub
 	vector<bool> chargedPart(part.upperBound(), false);
 	vector<bool> moved(G.upperNodeIdBound(), false);
 
-
 	/**
 	 * mark which partitions are charged already
 	 */
@@ -679,7 +693,6 @@ void MultiLevelPartitioner::enforceBalance(const Graph& G, Partition& part, doub
 		charged[c] = true;
 		chargedPart[part[c]] = true;
 	}
-
 
 	/**
 	 * save values before rebalancing to compare
