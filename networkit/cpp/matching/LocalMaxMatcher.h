@@ -10,6 +10,7 @@
 
 #include <set>
 #include <algorithm>
+//#include <pair>
 
 #include "Matcher.h"
 
@@ -24,13 +25,14 @@ namespace NetworKit {
 class LocalMaxMatcher: public NetworKit::Matcher {
 public:
 
-	LocalMaxMatcher(const Graph& G, const std::vector<index> chargedVertices = {});
+	LocalMaxMatcher(const Graph& G, const std::vector<index> chargedVertices = {}, const std::vector<std::pair<index,index> > forbiddenEdges = {});
 
 
 	virtual void run();
 
 protected:
 	const std::vector<index> chargedVertices;
+	const std::vector<std::pair<index, index> > forbiddenEdges;
 };
 
 } /* namespace NetworKit */

@@ -2930,6 +2930,7 @@ cdef extern from "cpp/structures/Partition.h":
 		void moveToSubset(index s, index e) except +
 		void toSingleton(index e) except +
 		void allToSingletons() except +
+		void allToOnePartition() except +
 		void mergeSubsets(index s, index t) except +
 		void setUpperBound(index upper) except +
 		index upperBound() except +
@@ -3095,6 +3096,10 @@ cdef class Partition:
 	def allToSingletons(self):
 		""" Assigns every element to a singleton set. Set id is equal to element id. """
 		self._this.allToSingletons()
+
+	def allToOnePartition(self):
+		""" Assigns every element to the same partition. """
+		self._this.allToOnePartition()
 
 	def mergeSubsets(self, index s, index t):
 		""" Assigns the elements from both sets to a new set and returns the id of it.
@@ -6073,7 +6078,7 @@ cdef class MatchingCoarsening(GraphCoarsening):
 
 cdef extern from "cpp/partitioning/MultiLevelPartitioner.h":
 	cdef cppclass _MultiLevelPartitioner "NetworKit::MultiLevelPartitioner":
-		_MultiLevelPartitioner(_Graph G, count numParts, double imbalance, bool bisectRecursively, vector[index] chargedVertices, bool avoidSurroundedNodes) except +
+		_MultiLevelPartitioner(_Graph G, count numParts, double imbalance, bool bisectRecursively, vector[index] chargedVertices, bool avoidSurroundedNodes, _Partition previous) except +
 		void run() except +
 		_Partition getPartition() except +
 		
@@ -6093,8 +6098,11 @@ cdef class MultiLevelPartitioner:
 	"""
 	cdef _MultiLevelPartitioner* _this
 
-	def __cinit__(self, Graph G, count numParts, double imbalance, bool bisectRecursively, vector[index] chargedVertices, bool avoidSurroundedNodes=False):
-		self._this = new _MultiLevelPartitioner(G._this, numParts, imbalance, bisectRecursively, chargedVertices, avoidSurroundedNodes)
+	def __cinit__(self, Graph G, count numParts, double imbalance, bool bisectRecursively, vector[index] chargedVertices, bool avoidSurroundedNodes=False, Partition previous = None):
+		if previous == None:
+			previous = Partition(G.numberOfNodes())
+			previous.allToOnePartition()
+		self._this = new _MultiLevelPartitioner(G._this, numParts, imbalance, bisectRecursively, chargedVertices, avoidSurroundedNodes, previous._this)
 
 	def run(self):
 		self._this.run()

@@ -8,7 +8,7 @@
 
 namespace NetworKit {
 
-LocalMaxMatcher::LocalMaxMatcher(const Graph& graph, const std::vector<index> chargedVertices): Matcher(graph), chargedVertices(chargedVertices)
+LocalMaxMatcher::LocalMaxMatcher(const Graph& graph, const std::vector<index> chargedVertices, const std::vector<std::pair<index,index> > forbiddenEdges): Matcher(graph), chargedVertices(chargedVertices), forbiddenEdges(forbiddenEdges)
 {
 	if (graph.isDirected()) throw std::runtime_error("Matcher only defined for undirected graphs");
 }
@@ -31,11 +31,18 @@ void LocalMaxMatcher::run() {
 	std::vector<MyEdge> edges(E);
 	index e = 0;
 	G.forEdges([&](node u, node v, edgeweight w) {
-		edges[e].s = u;
-		edges[e].t = v;
-		edges[e].w = w + Aux::Random::real(1e-6);
-		++e;
+		//we remove forbidden edge, since they should not be matched.
+		if (std::none_of(forbiddenEdges.begin(), forbiddenEdges.end(), [u,v](std::pair<index,index> edge){return (edge.first == u && edge.second == v) || (edge.first == v && edge.second == u);})) {
+			edges[e].s = u;
+			edges[e].t = v;
+			edges[e].w = w + Aux::Random::real(1e-6);
+			++e;
+		} else {
+			DEBUG("Edge (", u, ",", v, ") was forbidden, not matched.");
+		}
 	});
+
+	edges.resize(e);
 
 	// candidates records mating candidates
 	std::vector<MyEdge> candidates(z);
@@ -51,9 +58,9 @@ void LocalMaxMatcher::run() {
 	}
 
 	while (E > 0) {
-		// for each edge find out if it is locally maximum
+		// for each edge find out if it is locally maximum and allowed
 		for (auto edge: edges) {
-			if (edge.w > candidates[edge.s].w && edge.w > candidates[edge.t].w && edge.s != edge.t && (!charged[edge.s] || !charged[edge.t])) {
+			if (edge.w > candidates[edge.s].w && edge.w > candidates[edge.t].w && edge.s != edge.t && (!charged[edge.s] || !charged[edge.t]) ) {
 				candidates[edge.s].t = edge.t;
 				candidates[edge.s].w = edge.w;
 				candidates[edge.t].t = edge.s;
