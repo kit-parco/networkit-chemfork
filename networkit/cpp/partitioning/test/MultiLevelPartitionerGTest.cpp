@@ -73,10 +73,11 @@ TEST_F(MultiLevelPartitionerGTest, testFMOnContractedBarabasiAlbert) {
 	Partition part = partReader.read("input/intermediate.part");
 	const count k = part.numberOfSubsets();
 	ASSERT_EQ(n, part.numberOfElements());
+	const double maxImbalance = 0.05;
 
 	edgeweight gain;
 	do {
-		gain = MultiLevelPartitioner::fiducciaMatheysesStep(G, part);
+		gain = MultiLevelPartitioner::fiducciaMatheysesStep(G, part, maxImbalance);
 		DEBUG("Found gain ", gain, " in FM-step with ", G.numberOfNodes(), " nodes and ", part.numberOfSubsets(), " partitions.");
 	} while (gain > 0);
 	EXPECT_EQ(k, part.numberOfSubsets());
@@ -87,6 +88,8 @@ TEST_F(MultiLevelPartitionerGTest, testFMOnRealGraphAndRandomPartition) {
 	Graph G = reader.read("input/bacteriorhodopsin-10-2.5.graph");
 
 	const count k = 10;
+	const double maxImbalance = 0.05;
+
 
 	ClusteringGenerator clusterGen;
 	Partition part = clusterGen.makeRandomClustering(G, k);
@@ -95,7 +98,7 @@ TEST_F(MultiLevelPartitionerGTest, testFMOnRealGraphAndRandomPartition) {
 	edgeweight gainsum = 0;
 	edgeweight gain;
 	do {
-		gain = MultiLevelPartitioner::fiducciaMatheysesStep(G, part);
+		gain = MultiLevelPartitioner::fiducciaMatheysesStep(G, part, maxImbalance);
 		gainsum += gain;
 		DEBUG("Found gain ", gain, " in FM-step with ", G.numberOfNodes(), " nodes and ", part.numberOfSubsets(), " partitions.");
 	} while (gain > 0);
@@ -282,7 +285,7 @@ TEST_F(MultiLevelPartitionerGTest, testPartitionerNaiveComparisonRealGraph) {
 
 	edgeweight gain;
 	do {
-		gain = MultiLevelPartitioner::fiducciaMatheysesStep(G, naive);
+		gain = MultiLevelPartitioner::fiducciaMatheysesStep(G, naive, maxImbalance);
 		assert(gain == gain);
 		DEBUG("Found gain ", gain, " in FM-step with ", G.numberOfNodes(), " nodes and ", naive.numberOfSubsets(), " partitions.");
 	} while (gain > 0);

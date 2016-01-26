@@ -46,13 +46,13 @@ public:
 	virtual std::string toString() const;
 
 	static edgeweight calculateGain(const Graph& g, const Partition& input, index v, index targetPart);
-	static edgeweight fiducciaMatheysesStep(const Graph& G, Partition& input, double maxImbalance = 0.03, const std::vector<index> chargedVertices = {});
+	static edgeweight fiducciaMatheysesStep(const Graph& G, Partition& input, double maxImbalance, const std::vector<index> chargedVertices = {}, std::vector<double> nodeWeights = {});
 	static Partition growRegions(const Graph& g, const std::vector<index>& startingPoints);
 	static Partition growRegions(const Graph& g, const std::vector<index>& startingPoints, const std::vector<count>& weights, const Partition& constraint);
 
 protected:
-	static void enforceBalance(const Graph& G, Partition& part, double maxImbalance = 0.03, const std::vector<index>& chargedVertices = {});
-	static Partition partitionRecursively(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const std::vector<index>& chargedVertices, const Partition& previous);
+	static void enforceBalance(const Graph& G, Partition& part, double maxImbalance, const std::vector<index>& chargedVertices, const std::vector<double>& nodeWeights);
+	static Partition partitionRecursively(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const std::vector<index>& chargedVertices, const Partition& previous, const std::vector<double> &nodeWeights);
 	static Partition recursiveBisection(const Graph& g, count k);
 	static void recursiveBisection(const Graph& g, count k, Partition& input, index maskID);
 	static void repairSingleNodes(const Graph& g, Partition& intermediate);
