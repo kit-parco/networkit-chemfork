@@ -46,6 +46,10 @@ MultiLevelPartitioner::MultiLevelPartitioner(const Graph& G, count numParts, dou
 void MultiLevelPartitioner::run() {
 	count n = G.numberOfNodes();
 
+	if (hasRun) {
+		previousPartition = result;
+	}
+
 	std::vector<double> dummyWeights(n, 1);
 	result = partitionRecursively(G, numParts, maxImbalance, bisectRecursively, chargedNodes, previousPartition, dummyWeights);
 
@@ -53,7 +57,7 @@ void MultiLevelPartitioner::run() {
 	 * make sure that the partition is balanced. Only necessary if the balance constraint was relaxed during the multi-level-partitioning
 	 */
 	enforceBalance(G, result, maxImbalance, chargedNodes, dummyWeights);
-	fiducciaMatheysesStep(G, result, maxImbalance, chargedNodes, dummyWeights);
+	fiducciaMattheysesStep(G, result, maxImbalance, chargedNodes, dummyWeights);
 
 	if (noSingles) repairSingleNodes(G, result);
 
@@ -170,7 +174,7 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 	   // local refinement with Fiduccia-Matheyses
 	   edgeweight gain;
 	   do {
-			gain = fiducciaMatheysesStep(G, finePart, maxImbalance, chargedVertices, nodeWeights);
+			gain = fiducciaMattheysesStep(G, finePart, maxImbalance, chargedVertices, nodeWeights);
 			assert(gain == gain);
 			TRACE("Found gain ", gain, " in FM-step with ", G.numberOfNodes(), " nodes and ", finePart.numberOfSubsets(), " partitions.");
 	   } while (gain > 0);
@@ -184,7 +188,7 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 	}
 }
 //TODO: the node weights are currently copied, this could be improved
-edgeweight MultiLevelPartitioner::fiducciaMatheysesStep(const Graph& g, Partition&  part, double maxImbalance, const std::vector<index> chargedVertices, std::vector<double> nodeWeights) {
+edgeweight MultiLevelPartitioner::fiducciaMattheysesStep(const Graph& g, Partition&  part, double maxImbalance, const std::vector<index> chargedVertices, std::vector<double> nodeWeights) {
 	/**
 	 * magic numbers
 	 */
@@ -837,8 +841,12 @@ void MultiLevelPartitioner::repairSingleNodes(const Graph& G, Partition& interme
 		index nextPart = intermediate[i+1];
 		if (lastPart == nextPart && lastPart != currentPart) {
 			/**
-			 * we have a single node wedged into a wrong partition
+			 * we have a single node wedged into a wrong partition. We now have three choices:
+			 * 1. Move surrounded node to enclosing partition
+			 * 2. Move left node to some other partition
+			 * 3. Move right node to some other partition
 			 */
+
 			intermediate.moveToSubset(lastPart, i);
 			DEBUG("Moved node ", i, " to subset ", lastPart, " as it was surrounded by it.");
 		}

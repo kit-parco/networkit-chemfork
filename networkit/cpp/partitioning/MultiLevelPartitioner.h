@@ -46,7 +46,7 @@ public:
 	virtual std::string toString() const;
 
 	static edgeweight calculateGain(const Graph& g, const Partition& input, index v, index targetPart);
-	static edgeweight fiducciaMatheysesStep(const Graph& G, Partition& input, double maxImbalance, const std::vector<index> chargedVertices = {}, std::vector<double> nodeWeights = {});
+	static edgeweight fiducciaMattheysesStep(const Graph& G, Partition& input, double maxImbalance, const std::vector<index> chargedVertices = {}, std::vector<double> nodeWeights = {});
 	static Partition growRegions(const Graph& g, const std::vector<index>& startingPoints);
 	static Partition growRegions(const Graph& g, const std::vector<index>& startingPoints, const std::vector<count>& weights, const Partition& constraint);
 

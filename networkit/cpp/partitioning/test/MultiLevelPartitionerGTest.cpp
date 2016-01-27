@@ -77,7 +77,7 @@ TEST_F(MultiLevelPartitionerGTest, testFMOnContractedBarabasiAlbert) {
 
 	edgeweight gain;
 	do {
-		gain = MultiLevelPartitioner::fiducciaMatheysesStep(G, part, maxImbalance);
+		gain = MultiLevelPartitioner::fiducciaMattheysesStep(G, part, maxImbalance);
 		DEBUG("Found gain ", gain, " in FM-step with ", G.numberOfNodes(), " nodes and ", part.numberOfSubsets(), " partitions.");
 	} while (gain > 0);
 	EXPECT_EQ(k, part.numberOfSubsets());
@@ -98,7 +98,7 @@ TEST_F(MultiLevelPartitionerGTest, testFMOnRealGraphAndRandomPartition) {
 	edgeweight gainsum = 0;
 	edgeweight gain;
 	do {
-		gain = MultiLevelPartitioner::fiducciaMatheysesStep(G, part, maxImbalance);
+		gain = MultiLevelPartitioner::fiducciaMattheysesStep(G, part, maxImbalance);
 		gainsum += gain;
 		DEBUG("Found gain ", gain, " in FM-step with ", G.numberOfNodes(), " nodes and ", part.numberOfSubsets(), " partitions.");
 	} while (gain > 0);
@@ -285,7 +285,7 @@ TEST_F(MultiLevelPartitionerGTest, testPartitionerNaiveComparisonRealGraph) {
 
 	edgeweight gain;
 	do {
-		gain = MultiLevelPartitioner::fiducciaMatheysesStep(G, naive, maxImbalance);
+		gain = MultiLevelPartitioner::fiducciaMattheysesStep(G, naive, maxImbalance);
 		assert(gain == gain);
 		DEBUG("Found gain ", gain, " in FM-step with ", G.numberOfNodes(), " nodes and ", naive.numberOfSubsets(), " partitions.");
 	} while (gain > 0);
