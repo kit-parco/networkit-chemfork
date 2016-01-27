@@ -6079,8 +6079,12 @@ cdef class MatchingCoarsening(GraphCoarsening):
 cdef extern from "cpp/partitioning/MultiLevelPartitioner.h":
 	cdef cppclass _MultiLevelPartitioner "NetworKit::MultiLevelPartitioner":
 		_MultiLevelPartitioner(_Graph G, count numParts, double imbalance, bool bisectRecursively, vector[index] chargedVertices, bool avoidSurroundedNodes, _Partition previous) except +
+
 		void run() except +
 		_Partition getPartition() except +
+
+cdef extern from "cpp/partitioning/MultiLevelPartitioner.h" namespace "NetworKit::MultiLevelPartitioner":
+	edgeweight fiducciaMattheysesStep(_Graph G, _Partition &part, double maxImbalance, vector[index] chargedVertices, vector[double] nodeWeights) except +
 		
 cdef class MultiLevelPartitioner:
 	"""
@@ -6103,6 +6107,21 @@ cdef class MultiLevelPartitioner:
 			previous = Partition(G.numberOfNodes())
 			previous.allToOnePartition()
 		self._this = new _MultiLevelPartitioner(G._this, numParts, imbalance, bisectRecursively, chargedVertices, avoidSurroundedNodes, previous._this)
+
+	@staticmethod
+	def fiducciaMattheysesStep(Graph G, Partition part, double maxImbalance, vector[index] chargedVertices, vector[double] nodeWeights):
+		"""
+		Performs a Fiduccia-Mattheyses step on the input partition, making local improvements on it. The number of subsets stays the same.
+
+		Parameters
+		-----------
+		G : graph which is to be partitioned. This argument will not be changed.
+		part : previous partition, which is to be improved
+		maxImbalance: maximum imbalance of the partition. The largest subset will have size at most math.ceil(n/k)*(1+maxImbalance), for k subsets.
+
+		"""
+
+		return fiducciaMattheysesStep(G._this, part._this, maxImbalance, chargedVertices, nodeWeights)
 
 	def run(self):
 		self._this.run()
