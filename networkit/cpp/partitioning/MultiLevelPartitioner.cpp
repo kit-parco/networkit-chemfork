@@ -120,7 +120,7 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 		assert(forbiddenEdges.size() < G.numberOfEdges());
 
 		// recursive coarsening
-	   LocalMaxMatcher matcher(G, chargedVertices, forbiddenEdges, nodeWeights, false);
+	   LocalMaxMatcher matcher(G, chargedVertices, forbiddenEdges, nodeWeights, true);
 	   matcher.run();
 	   Matching matching = matcher.getMatching();
 	   assert(matching.isProper(G));
@@ -162,7 +162,7 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 	   double preBalancingImbalance = finePart.getImbalance(numParts);
 	   count preBalancingK = finePart.numberOfSubsets();
 
-	   enforceBalance(G, finePart, maxImbalance, chargedVertices, nodeWeights);
+	   enforceBalance(G, finePart, maxImbalance*2, chargedVertices, nodeWeights);
 
 	   edgeweight preRefinementCut = finePart.calculateCutWeight(G);
 	   double preRefinementImbalance = finePart.getImbalance(numParts);
@@ -187,7 +187,7 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 	   return finePart;
 	}
 }
-//TODO: the node weights are currently copied, this could be improved
+//TODO: the node weights are currently copied, this could be improved. I could use a reference, but then I cannot make it const, since I resize the vector if it is empty. I allow empty nodeWeights for overloading.
 edgeweight MultiLevelPartitioner::fiducciaMattheysesStep(const Graph& g, Partition&  part, double maxImbalance, const std::vector<index> chargedVertices, std::vector<double> nodeWeights) {
 	/**
 	 * magic numbers
@@ -209,27 +209,52 @@ edgeweight MultiLevelPartitioner::fiducciaMattheysesStep(const Graph& g, Partiti
 
 	const auto subsetIds = part.getSubsetIds();
 	vector<index> bestTargetPartition(z);
-	std::map<index, count> partitionSizes = part.subsetSizeMap();
 	vector<PrioQueue<edgeweight, index> > queues(part.upperBound(),n);
 	vector<edgeweight> gains;
 	vector<pair<index, index> > transfers;
 	vector<index> transferedVertices;
 	vector<double> imbalance;
-	edgeweight total = g.totalEdgeWeight();
+
+	vector<double> fragmentSizes(part.upperBound());
+
+	const edgeweight total = g.totalEdgeWeight();
 	vector<bool> charged(z, false);
 	vector<bool> chargedPart(part.upperBound(), false);
+
+	double maxFragmentSize = 0;
+	double sumNodeWeights = 0;
+	double largestNodeWeight = 0;
+
+	for (node v : g.nodes()) {
+		const double weight = nodeWeights[v];
+
+		assert(weight >= 0);
+
+		sumNodeWeights += weight;
+		fragmentSizes[part[v]] += weight;
+
+		if (weight > largestNodeWeight) {
+			largestNodeWeight = weight;
+		}
+
+		if (fragmentSizes[part[v]] < maxFragmentSize) {
+			maxFragmentSize = fragmentSizes[part[v]];
+		}
+	}
+
+	/**
+	 * The following extension of balance to non-uniform node weights is a deliberate overestimate. For arbitrary node weights, finding the optimal size amounts to solving Bin-Packing.
+	 * Thus, we stick to the known definition for uniform weights and add a safety buffer otherwise.
+	 */
+	const double optSize = largestNodeWeight <= 1 ? ceil(double(n) / k) : double(sumNodeWeights) / k + largestNodeWeight;
+	const double maxAllowablePartSize = optSize*(1+maxImbalance);
+
 
 	/**
 	 * if the number of nodes is not divisible by the number of partitions, a perfect balance is impossible.
 	 * To avoid an endless loop, compute the theoretical minimum imbalance and adjust the parameter if necessary.
 	 */
-	const count optSize = ceil(double(n) / k);
-
-	const count maxAllowablePartSize = optSize*(1+maxImbalance);
-	count minAllowablePartSize = maxImbalance >= 1 ? 1 : ceil(optSize*(1-maxImbalance));
-	if (minAllowablePartSize < 1) minAllowablePartSize = 1;
 	assert(maxAllowablePartSize >= optSize);
-	assert(minAllowablePartSize <= optSize);
 
 	/**
 	 * mark which partitions are charged already
@@ -281,13 +306,13 @@ edgeweight MultiLevelPartitioner::fiducciaMattheysesStep(const Graph& g, Partiti
 		count largestSize = 0;
 
 		for (index partID : subsetIds) {
-			if (queues[partID].size() > 0 && partitionSizes[partID] > largestSize) {
+			if (queues[partID].size() > 0 && fragmentSizes[partID] > largestSize) {
 				largestMovablePart = partID;
-				largestSize = partitionSizes[partID];
+				largestSize = fragmentSizes[partID];
 			}
 		}
 
-		if (largestSize > minAllowablePartSize && largestMovablePart != -1) {
+		if (largestSize > 1 && largestMovablePart != -1) {
 			//at least one queue is not empty
 			allQueuesEmpty = false;
 			index partID = largestMovablePart;
@@ -309,8 +334,8 @@ edgeweight MultiLevelPartitioner::fiducciaMattheysesStep(const Graph& g, Partiti
 			moved[topVertex] = true;
 
 			//udpate size map
-			partitionSizes[partID]--;
-			partitionSizes[IdAtMax]++;
+			fragmentSizes[partID] -= nodeWeights[topVertex];
+			fragmentSizes[IdAtMax] += nodeWeights[topVertex];
 
 			//update charge state
 			if (charged[topVertex]) {
@@ -323,10 +348,8 @@ edgeweight MultiLevelPartitioner::fiducciaMattheysesStep(const Graph& g, Partiti
 			gains.push_back(gainsum);
 			transfers.emplace_back(partID, IdAtMax);
 			transferedVertices.push_back(topVertex);
-			/**
-			 * this next line looks daunting, but just takes the partition with the largest size (map entry in partitionSizes) and divides its size by the optimal size to get the imbalance
-			 */
-			imbalance.push_back(double((*std::max_element(partitionSizes.begin(), partitionSizes.end(), [](const pair<index, count>& a, const pair<index, count>& b){return a.second < b.second;})).second) / optSize - 1);
+
+			imbalance.push_back(getWeightedImbalance(fragmentSizes, sumNodeWeights, largestNodeWeight, n, k));
 
 			//update counter and possibly abort early
 			if (topGain > 0) {
@@ -486,11 +509,6 @@ Partition MultiLevelPartitioner::growRegions(const Graph& g, const vector<index>
 	for (index point : startingPoints) assert(g.hasNode(point));
 
 	/**
-	 * partition should be balanced
-	 */
-	const count maxPartSize = ceil(n / k);
-
-	/**
 	 * make sure starting points are unique
 	 */
 	for (index i = 0; i < k; i++) {
@@ -647,7 +665,6 @@ index MultiLevelPartitioner::getFarthestNode(const Graph& G, std::vector<index> 
 	/**
 	 * Yet another BFS.
 	 */
-	const count n = G.numberOfNodes();
 	const count z = G.upperNodeIdBound();
 
 	vector<bool> visited(z, false);
@@ -674,21 +691,46 @@ void MultiLevelPartitioner::enforceBalance(const Graph& G, Partition& part, doub
 	const count k = part.numberOfSubsets();
 	assert(part.numberOfElements() == n);
 
-	const count optSize = ceil(double(n) / k);
-	const double epsilon = 0.000001;//to handle floating point issues
-	const count maxAllowablePartSize = optSize*(1+maxImbalance);
-
 	/**
 	 * allocate data structures similar to FM
 	 */
 	std::vector<PrioQueue<edgeweight, index> > queues(part.upperBound(),n);
 	const auto subsetIds = part.getSubsetIds();
-	vector<index> bestTargetPartition(z);
-	std::map<index, count> partitionSizes = part.subsetSizeMap();
+	vector<index> bestTargetPartition(z, 0);
+	vector<double> fragmentSizes(part.upperBound());
+
 	const edgeweight total = G.totalEdgeWeight();
 	vector<bool> charged(z, false);
 	vector<bool> chargedPart(part.upperBound(), false);
 	vector<bool> moved(G.upperNodeIdBound(), false);
+
+	double maxFragmentSize = 0;
+	double sumNodeWeights = 0;
+	double largestNodeWeight = 0;
+
+	for (node v : G.nodes()) {
+		const double weight = nodeWeights[v];
+
+		assert(weight >= 0);
+
+		sumNodeWeights += weight;
+		fragmentSizes[part[v]] += weight;
+
+		if (weight > largestNodeWeight) {
+			largestNodeWeight = weight;
+		}
+
+		if (fragmentSizes[part[v]] > maxFragmentSize) {
+			maxFragmentSize = fragmentSizes[part[v]];
+		}
+	}
+
+	/**
+	 * The following extension of balance to non-uniform node weights is a deliberate overestimate. For arbitrary node weights, finding the optimal size amounts to solving Bin-Packing.
+	 * Thus, we stick to the known definition for uniform weights and add a safety buffer otherwise.
+	 */
+	const double optSize = largestNodeWeight <= 1 ? ceil(double(n) / k) : double(sumNodeWeights) / k + largestNodeWeight;
+	const double maxAllowablePartSize = optSize*(1+maxImbalance);
 
 	/**
 	 * mark which partitions are charged already
@@ -699,9 +741,14 @@ void MultiLevelPartitioner::enforceBalance(const Graph& G, Partition& part, doub
 	}
 
 	/**
+	 *
+	 */
+
+
+	/**
 	 * save values before rebalancing to compare
 	 */
-	double currentImbalance = part.getImbalance(k);
+	double currentImbalance = getWeightedImbalance(fragmentSizes, sumNodeWeights, largestNodeWeight, n, k);
 
 	/**
 	 * repeat until partitions are balanced
@@ -724,13 +771,13 @@ void MultiLevelPartitioner::enforceBalance(const Graph& G, Partition& part, doub
 		 * Fill priority queues.
 		 * Since we want to access the nodes with the maximum gain first but have only minQueues available, we use the negative gain as priority.
 		 */
-		part.forEntries([total, &G, &part, &queues, &subsetIds, &bestTargetPartition, &charged, &chargedPart, &partitionSizes](index node, index clusterID){
+		part.forEntries([total, &G, &part, &queues, &subsetIds, &bestTargetPartition, &charged, &chargedPart, &fragmentSizes, &nodeWeights](index node, index clusterID){
 			assert(G.hasNode(node));
 			edgeweight maxGain = -total;
 			index IdAtMax = 0;
 			for (index otherSubset : subsetIds) {
 				edgeweight thisgain = calculateGain(G, part, node, otherSubset);
-				if (thisgain > maxGain && otherSubset != clusterID && (!chargedPart[otherSubset] || !charged[node]) && partitionSizes[otherSubset] + 1 < partitionSizes[clusterID]) {
+				if (thisgain > maxGain && otherSubset != clusterID && (!chargedPart[otherSubset] || !charged[node]) && fragmentSizes[otherSubset] + nodeWeights[node] < fragmentSizes[clusterID]) {
 					IdAtMax = otherSubset;
 					maxGain = thisgain;
 				}
@@ -752,9 +799,9 @@ void MultiLevelPartitioner::enforceBalance(const Graph& G, Partition& part, doub
 			count largestSize = 0;
 
 			for (index partID : subsetIds) {
-				if (queues[partID].size() > 0 && partitionSizes[partID] > largestSize) {
+				if (queues[partID].size() > 0 && fragmentSizes[partID] > largestSize) {
 					largestMovablePart = partID;
-					largestSize = partitionSizes[partID];
+					largestSize = fragmentSizes[partID];
 				}
 			}
 
@@ -779,19 +826,19 @@ void MultiLevelPartitioner::enforceBalance(const Graph& G, Partition& part, doub
 					index IdAtMax = bestTargetPartition[topVertex];
 					assert(calculateGain(G, part, topVertex, IdAtMax) == topGain);
 
-					count ownSize = partitionSizes[p];
-					count targetSize = partitionSizes[IdAtMax];
+					count ownSize = fragmentSizes[p];
+					count targetSize = fragmentSizes[IdAtMax];
 
 					if (targetSize >= ownSize) continue; //wouldn't make any sense to move, now would it?
 
 					part.moveToSubset(IdAtMax, topVertex);
 					moved[topVertex] = true;
 
-					DEBUG("Node moved, Imbalance now ", part.getImbalance(k));
+					DEBUG("Node ", topVertex, " of weight ", nodeWeights[topVertex], " moved, Imbalance now ", getWeightedImbalance(fragmentSizes, sumNodeWeights, largestNodeWeight,  n,  k));
 
 					//udpate size map
-					partitionSizes[p]--;
-					partitionSizes[IdAtMax]++;
+					fragmentSizes[p] -= nodeWeights[topVertex];
+					fragmentSizes[IdAtMax] += nodeWeights[topVertex];
 
 					//update charge state
 					if (charged[topVertex]) {
@@ -800,14 +847,14 @@ void MultiLevelPartitioner::enforceBalance(const Graph& G, Partition& part, doub
 					}
 
 					//update gains of neighbours
-					G.forNeighborsOf(topVertex, [&G, topVertex, p, total, &queues, &part, &subsetIds, &bestTargetPartition, &charged, &chargedPart, &partitionSizes, &moved](index w){
+					G.forNeighborsOf(topVertex, [&G, topVertex, p, total, &queues, &part, &subsetIds, &bestTargetPartition, &charged, &chargedPart, &fragmentSizes, &moved, &nodeWeights](index w){
 						if (!moved[w]) {
 							//update gain
 							edgeweight newMaxGain = -total;
 							index IdAtMax = 0;
 							for (index otherSubset : subsetIds) {
 								edgeweight thisgain = calculateGain(G, part, w, otherSubset);
-								if (thisgain > newMaxGain && otherSubset != part[w] &&  (!chargedPart[otherSubset] || !charged[w]) && partitionSizes[otherSubset] + 1 < partitionSizes[part[w]]) {
+								if (thisgain > newMaxGain && otherSubset != part[w] &&  (!chargedPart[otherSubset] || !charged[w]) && fragmentSizes[otherSubset] + nodeWeights[w] < fragmentSizes[part[w]]) {
 									newMaxGain = thisgain;
 									IdAtMax = otherSubset;
 								}
@@ -823,9 +870,9 @@ void MultiLevelPartitioner::enforceBalance(const Graph& G, Partition& part, doub
 			}
 		}
 		double oldImbalance = currentImbalance;
-		currentImbalance = part.getImbalance(k);
+		currentImbalance = getWeightedImbalance(fragmentSizes, largestNodeWeight, sumNodeWeights, n,  k);
 		DEBUG("Imbalance reduced ", oldImbalance, "->", currentImbalance);
-
+		assert(currentImbalance < oldImbalance);
 	}
 }
 

@@ -72,6 +72,11 @@ protected:
 		return true;
 	}
 
+	static double getWeightedImbalance(const std::vector<double>& fragmentSizes, double sumNodeWeights, double largestNodeWeight, double n, double k) {
+		const double optSize = largestNodeWeight <= 1 ? ceil(double(n) / k) : sumNodeWeights / k + largestNodeWeight;
+		return ((*std::max_element(fragmentSizes.begin(), fragmentSizes.end())) / optSize) - 1;
+	}
+
 	const Graph& G;
 	const count numParts;
 	const double maxImbalance;
