@@ -120,7 +120,7 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 		assert(forbiddenEdges.size() < G.numberOfEdges());
 
 		// recursive coarsening
-	   LocalMaxMatcher matcher(G, chargedVertices, forbiddenEdges);
+	   LocalMaxMatcher matcher(G, chargedVertices, forbiddenEdges, nodeWeights, false);
 	   matcher.run();
 	   Matching matching = matcher.getMatching();
 	   assert(matching.isProper(G));

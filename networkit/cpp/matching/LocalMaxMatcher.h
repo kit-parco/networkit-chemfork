@@ -25,7 +25,7 @@ namespace NetworKit {
 class LocalMaxMatcher: public NetworKit::Matcher {
 public:
 
-	LocalMaxMatcher(const Graph& G, const std::vector<index> chargedVertices = {}, const std::vector<std::pair<index,index> > forbiddenEdges = {});
+	LocalMaxMatcher(const Graph& G, const std::vector<index>& chargedVertices = {}, const std::vector<std::pair<index,index> >& forbiddenEdges = {}, const std::vector<double>& nodeWeights = {}, bool useConductance = false);
 
 
 	virtual void run();
@@ -33,6 +33,8 @@ public:
 protected:
 	const std::vector<index> chargedVertices;
 	const std::vector<std::pair<index, index> > forbiddenEdges;
+	std::vector<double> nodeWeights;
+	const bool useConductance;
 };
 
 } /* namespace NetworKit */
