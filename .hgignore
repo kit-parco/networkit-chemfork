@@ -58,3 +58,5 @@ syntax: regexp
 syntax: glob
 NetworKit-Tests-*
 include/NetworKit
+
+networkit.egg-info/
