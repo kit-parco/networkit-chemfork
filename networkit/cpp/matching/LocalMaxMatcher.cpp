@@ -8,9 +8,12 @@
 
 namespace NetworKit {
 
-LocalMaxMatcher::LocalMaxMatcher(const Graph& graph, const std::vector<index> chargedVertices, const std::vector<std::pair<index,index> > forbiddenEdges): Matcher(graph), chargedVertices(chargedVertices), forbiddenEdges(forbiddenEdges)
+LocalMaxMatcher::LocalMaxMatcher(const Graph& graph, const std::vector<index>& chargedVertices, const std::vector<std::pair<index,index> >& forbiddenEdges, const std::vector<double>& nodeWeights, bool useConductance): Matcher(graph), chargedVertices(chargedVertices), forbiddenEdges(forbiddenEdges), nodeWeights(nodeWeights), useConductance(useConductance)
 {
 	if (graph.isDirected()) throw std::runtime_error("Matcher only defined for undirected graphs");
+	if (this->nodeWeights.size() == 0) {
+		this->nodeWeights.resize(graph.numberOfNodes(), 1);
+	}
 }
 
 // TODO: update to new edge attribute system
@@ -57,14 +60,17 @@ void LocalMaxMatcher::run() {
 		charged[c] = true;
 	}
 
+	auto conductance = [&](MyEdge edge) -> double {return edge.w / (nodeWeights[edge.s] * nodeWeights[edge.t]);};
+
 	while (E > 0) {
 		// for each edge find out if it is locally maximum and allowed
 		for (auto edge: edges) {
-			if (edge.w > candidates[edge.s].w && edge.w > candidates[edge.t].w && edge.s != edge.t && (!charged[edge.s] || !charged[edge.t]) ) {
+			const double edgeRating = useConductance ? conductance(edge) : edge.w;
+			if (edgeRating > candidates[edge.s].w && edgeRating > candidates[edge.t].w && edge.s != edge.t && (!charged[edge.s] || !charged[edge.t]) ) {
 				candidates[edge.s].t = edge.t;
-				candidates[edge.s].w = edge.w;
+				candidates[edge.s].w = edgeRating;
 				candidates[edge.t].t = edge.s;
-				candidates[edge.t].w = edge.w;
+				candidates[edge.t].w = edgeRating;
 			}
 		}
 
