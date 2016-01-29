@@ -77,6 +77,34 @@ protected:
 		return ((*std::max_element(fragmentSizes.begin(), fragmentSizes.end())) / optSize) - 1;
 	}
 
+	static double getWeightedImbalance(const Partition&  part, const std::vector<double> &nodeWeights, count k) {
+
+		assert(part.numberOfElements() == nodeWeights.size());
+
+		std::vector<double> fragmentSizes(part.upperBound());
+		double maxFragmentSize = 0;
+		double sumNodeWeights = 0;
+		double largestNodeWeight = 0;
+
+		for (index v = 0; v < part.numberOfElements(); v++) {
+			const double weight = nodeWeights[v];
+
+			assert(weight >= 0);
+
+			sumNodeWeights += weight;
+			fragmentSizes[part[v]] += weight;
+
+			if (weight > largestNodeWeight) {
+				largestNodeWeight = weight;
+			}
+
+			if (fragmentSizes[part[v]] < maxFragmentSize) {
+				maxFragmentSize = fragmentSizes[part[v]];
+			}
+		}
+		return getWeightedImbalance(fragmentSizes, sumNodeWeights, largestNodeWeight, part.numberOfElements(), k);
+	}
+
 	const Graph& G;
 	const count numParts;
 	const double maxImbalance;

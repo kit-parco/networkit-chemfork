@@ -93,13 +93,12 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 	   ClusteringGenerator gen;
 	   Partition naiveInitial = gen.makeContinuousBalancedClustering(G, numParts);
 
-	   if (chargesValid(naiveInitial, chargedVertices) && naiveInitial.calculateCutWeight(G) < initial.calculateCutWeight(G)) {
+	   if (chargesValid(naiveInitial, chargedVertices) && naiveInitial.calculateCutWeight(G) < initial.calculateCutWeight(G) && getWeightedImbalance(initial, nodeWeights, numParts) <= maxImbalance) {
 		   initial = naiveInitial;
 		   DEBUG("Replaced initial partition with naive solution, since it was better.");
 	   }
 
-
-	   bool previousValid = previous.numberOfElements() == n && previous.getImbalance(numParts) <= maxImbalance && chargesValid(previous, chargedVertices);
+	   bool previousValid = previous.numberOfElements() == n && getWeightedImbalance(previous, nodeWeights, numParts) <= maxImbalance && chargesValid(previous, chargedVertices);
 	   if (previousValid && previous.calculateCutWeight(G) < initial.calculateCutWeight(G)) {
 		   initial = previous;
 	   }
