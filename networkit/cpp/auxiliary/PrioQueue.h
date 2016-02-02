@@ -64,6 +64,11 @@ public:
 	virtual ElemType extractMin();
 
 	/**
+	 * Returns element with minimum key without removing it
+	 */
+	virtual ElemType peek();
+
+	/**
 	 * Modifies entry with value @a value.
 	 * The entry is then set to @a newKey with the same value.
 	 * If the corresponding key is not present, the element will be inserted.
@@ -161,6 +166,13 @@ std::pair<Key, Val> Aux::PrioQueue<Key, Val>::extractMin() {
 	assert(pqset.size() > 0);
 	ElemType elem = (* pqset.begin());
 	remove(elem);
+	return elem;
+}
+
+template<class Key, class Val>
+std::pair<Key, Val> Aux::PrioQueue<Key, Val>::peek() {
+	assert(pqset.size() > 0);
+	ElemType elem = (* pqset.begin());
 	return elem;
 }
 

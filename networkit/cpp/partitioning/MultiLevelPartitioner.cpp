@@ -200,6 +200,7 @@ edgeweight MultiLevelPartitioner::fiducciaMattheysesStep(const Graph& g, Partiti
 	const count n = part.numberOfElements();
 	const count z = g.upperNodeIdBound();
 	const count k = part.numberOfSubsets();
+	const count partZ = part.upperBound();
 
 	if (nodeWeights.size() == 0) {
 		nodeWeights.resize(n, 1);
@@ -263,24 +264,34 @@ edgeweight MultiLevelPartitioner::fiducciaMattheysesStep(const Graph& g, Partiti
 		chargedPart[part[c]] = true;
 	}
 
+	/**
+	 * fill edge cut table
+	 */
+	vector<vector<double> > edgeCuts(n);
+	g.parallelForNodes([&g, &part, &edgeCuts, partZ](index v){
+		edgeCuts[v].resize(partZ, 0);
+		for (index neighbor : g.neighbors(v)) {
+			edgeCuts[v][part[neighbor]] += g.weight(v,neighbor);
+		}
+	});
 
 	/**
 	 * fill priority queues. Since we want to access the nodes with the maximum gain first but have only minQueues available, we use the negative gain as priority.
 	 */
-	part.forEntries([total, &g, &part, &queues, &subsetIds, &bestTargetPartition, &charged, &chargedPart](index node, index clusterID){
-		assert(g.hasNode(node));
-		edgeweight maxGain = -total;
-		index IdAtMax = 0;
-		for (index otherSubset : subsetIds) {
-			edgeweight thisgain = calculateGain(g, part, node, otherSubset);
-			if (thisgain > maxGain && otherSubset != clusterID && (!chargedPart[otherSubset] || !charged[node])) {
-				IdAtMax = otherSubset;
-				maxGain = thisgain;
+	g.forNodes([&queues, &part, &bestTargetPartition, &charged, &chargedPart, &edgeCuts, partZ, total](index v){
+		edgeweight maxCut = -total;
+		index idAtMax = partZ;
+		index ownFragment = part[v];
+		for (index fragment = 0; fragment < partZ; fragment++) {
+			if (fragment != ownFragment && edgeCuts[v][fragment] > maxCut && (!chargedPart[fragment] || !charged[v])) {//I could check the balance constraint even here. Should I?
+				idAtMax = fragment;
+				maxCut = edgeCuts[v][fragment];
 			}
 		}
-		bestTargetPartition[node] = IdAtMax;
-		assert(clusterID < queues.size());
-		queues[clusterID].insert(-maxGain, node); //negative max gain
+		assert(idAtMax < partZ);
+		bestTargetPartition[v] = idAtMax;
+		assert(ownFragment < queues.size());
+		queues[ownFragment].insert(-(maxCut-edgeCuts[v][ownFragment]), v); //negative max gain
 	});
 
 	count queuedSum = 0;
@@ -324,28 +335,31 @@ edgeweight MultiLevelPartitioner::fiducciaMattheysesStep(const Graph& g, Partiti
 			topGain = -topGain;//invert, since the negative gain was used as priority.
 
 			//now get target partition.
-			index IdAtMax = bestTargetPartition[topVertex];
-			assert(calculateGain(g, part, topVertex, IdAtMax) == topGain);
+			index targetFragment = bestTargetPartition[topVertex];
+			double storedGain = edgeCuts[topVertex][targetFragment] - edgeCuts[topVertex][partID];
+			assert(abs(storedGain - topGain) < 0.0001);
+			//double checkedGain = calculateGain(g, part, topVertex, targetFragment);
+			//assert(abs(checkedGain - topGain) < 0.00001);
 
 			//move node there
-			TRACE("Moved node ", topVertex, " to partition ", IdAtMax, " for gain of ", topGain);
-			part.moveToSubset(IdAtMax, topVertex);
+			TRACE("Moved node ", topVertex, " to partition ", targetFragment, " for gain of ", topGain);
+			part.moveToSubset(targetFragment, topVertex);
 			moved[topVertex] = true;
 
 			//udpate size map
 			fragmentSizes[partID] -= nodeWeights[topVertex];
-			fragmentSizes[IdAtMax] += nodeWeights[topVertex];
+			fragmentSizes[targetFragment] += nodeWeights[topVertex];
 
 			//update charge state
 			if (charged[topVertex]) {
 				chargedPart[partID] = false;
-				chargedPart[IdAtMax] = true;
+				chargedPart[targetFragment] = true;
 			}
 
 			//update history
 			gainsum += topGain;
 			gains.push_back(gainsum);
-			transfers.emplace_back(partID, IdAtMax);
+			transfers.emplace_back(partID, targetFragment);
 			transferedVertices.push_back(topVertex);
 
 			imbalance.push_back(getWeightedImbalance(fragmentSizes, sumNodeWeights, largestNodeWeight, n, k));
@@ -360,25 +374,31 @@ edgeweight MultiLevelPartitioner::fiducciaMattheysesStep(const Graph& g, Partiti
 				}
 			}
 
-			//update gains of neighbours
-			g.forNeighborsOf(topVertex, [&g, topVertex, partID, total, &queues, &part, &subsetIds, &moved, &bestTargetPartition, &charged, &chargedPart](index w){
+			//update edge cuts of neighbours
+			g.forNeighborsOf(topVertex, [&g, topVertex, partID, total, targetFragment, &queues, &part, &subsetIds, &moved, &bestTargetPartition, &charged, &chargedPart, &edgeCuts, partZ](index w){
 				if (!moved[w]) {
 					//update gain
-					edgeweight newMaxGain = -total;
-					index IdAtMax = 0;
-					for (index otherSubset : subsetIds) {
-						edgeweight thisgain = calculateGain(g, part, w, otherSubset);
-						if (thisgain > newMaxGain && otherSubset != part[w] &&  (!chargedPart[otherSubset] || !charged[w])) {
-							newMaxGain = thisgain;
-							IdAtMax = otherSubset;
+					edgeCuts[w][partID] -= g.weight(topVertex, w);
+					edgeCuts[w][targetFragment] += g.weight(topVertex, w);
+
+					edgeweight maxCut = -total;
+					index idAtMax = partZ;
+					index ownFragment = part[w];
+
+					for (index fragment = 0; fragment < partZ; fragment++) {
+						if (fragment != ownFragment && edgeCuts[w][fragment] > maxCut && (!chargedPart[fragment] || !charged[w])) {//I could check the balance constraint even here. Should I?
+							idAtMax = fragment;
+							maxCut = edgeCuts[w][fragment];
 						}
 					}
-					bestTargetPartition[w] = IdAtMax;
+
+					bestTargetPartition[w] = idAtMax;
 
 					//update prioqueue
 					queues[part[w]].remove(w);
-					queues[part[w]].insert(-newMaxGain, w);
-
+					if (idAtMax < partZ) {
+						queues[part[w]].insert(-(maxCut-edgeCuts[w][ownFragment]), w);
+					}
 				}
 			});
 
@@ -684,10 +704,14 @@ index MultiLevelPartitioner::getFarthestNode(const Graph& G, std::vector<index> 
 	return nextNode;
 }
 
-void MultiLevelPartitioner::enforceBalance(const Graph& G, Partition& part, double maxImbalance, const vector<index>& chargedVertices, const std::vector<double>& nodeWeights) {
-	const count n = G.numberOfNodes();
-	const count z = G.upperNodeIdBound();
+void MultiLevelPartitioner::enforceBalance(const Graph& g, Partition& part, double maxImbalance, const vector<index>& chargedVertices, const std::vector<double>& nodeWeights) {
+	const count n = g.numberOfNodes();
+	const count z = g.upperNodeIdBound();
 	const count k = part.numberOfSubsets();
+	if (part.upperBound() > k) {
+		part.compact();
+	}
+	const count partZ = part.upperBound();
 	assert(part.numberOfElements() == n);
 
 	/**
@@ -698,16 +722,16 @@ void MultiLevelPartitioner::enforceBalance(const Graph& G, Partition& part, doub
 	vector<index> bestTargetPartition(z, 0);
 	vector<double> fragmentSizes(part.upperBound());
 
-	const edgeweight total = G.totalEdgeWeight();
+	const edgeweight total = g.totalEdgeWeight();
 	vector<bool> charged(z, false);
 	vector<bool> chargedPart(part.upperBound(), false);
-	vector<bool> moved(G.upperNodeIdBound(), false);
+	vector<bool> moved(g.upperNodeIdBound(), false);
 
 	double maxFragmentSize = 0;
 	double sumNodeWeights = 0;
 	double largestNodeWeight = 0;
 
-	for (node v : G.nodes()) {
+	for (node v : g.nodes()) {
 		const double weight = nodeWeights[v];
 
 		assert(weight >= 0);
@@ -767,23 +791,38 @@ void MultiLevelPartitioner::enforceBalance(const Graph& G, Partition& part, doub
 		moved.resize(z, false);
 
 		/**
-		 * Fill priority queues.
-		 * Since we want to access the nodes with the maximum gain first but have only minQueues available, we use the negative gain as priority.
+		 * fill edge cut table
 		 */
-		part.forEntries([total, &G, &part, &queues, &subsetIds, &bestTargetPartition, &charged, &chargedPart, &fragmentSizes, &nodeWeights](index node, index clusterID){
-			assert(G.hasNode(node));
-			edgeweight maxGain = -total;
-			index IdAtMax = 0;
-			for (index otherSubset : subsetIds) {
-				edgeweight thisgain = calculateGain(G, part, node, otherSubset);
-				if (thisgain > maxGain && otherSubset != clusterID && (!chargedPart[otherSubset] || !charged[node]) && fragmentSizes[otherSubset] + nodeWeights[node] < fragmentSizes[clusterID]) {
-					IdAtMax = otherSubset;
-					maxGain = thisgain;
+		vector<vector<double> > edgeCuts(n);
+		g.parallelForNodes([&g, &part, &edgeCuts, partZ](index v){
+			edgeCuts[v].resize(partZ, 0);
+			for (index neighbor : g.neighbors(v)) {
+				edgeCuts[v][part[neighbor]] += g.weight(v,neighbor);
+			}
+		});
+
+		/**
+		 * fill priority queues. Since we want to access the nodes with the maximum gain first but have only minQueues available, we use the negative gain as priority.
+		 */
+		g.forNodes([&queues, &part, &bestTargetPartition, &charged, &chargedPart, &edgeCuts, &fragmentSizes, &nodeWeights, partZ, total](index v){
+			edgeweight maxCut = -total;
+			index idAtMax = partZ;
+			index ownFragment = part[v];
+			for (index fragment = 0; fragment < partZ; fragment++) {
+				if (fragment != ownFragment && edgeCuts[v][fragment] > maxCut && (!chargedPart[fragment] || !charged[v]) && fragmentSizes[fragment] + nodeWeights[v] < fragmentSizes[ownFragment]) {//I could check the balance constraint even here. Should I?
+					idAtMax = fragment;
+					maxCut = edgeCuts[v][fragment];
 				}
 			}
-			bestTargetPartition[node] = IdAtMax;
-			assert(clusterID < queues.size());
-			queues[clusterID].insert(-maxGain, node); //negative max gain
+
+			assert(ownFragment < queues.size());
+			bestTargetPartition[v] = idAtMax;
+			if (idAtMax < partZ) {
+				//if movable, put into queue
+				double key = -(maxCut-edgeCuts[v][ownFragment]);
+				queues[ownFragment].insert(key, v); //negative max gain
+			}
+
 		});
 
 		/**
@@ -819,50 +858,90 @@ void MultiLevelPartitioner::enforceBalance(const Graph& G, Partition& part, doub
 					assert(!moved[topVertex]);
 					topGain = -topGain;//invert, since the negative gain was used as priority.
 
-					if (topGain == -total) continue;//could not be moved anywhere
+					if (topGain <= -total) continue;//could not be moved anywhere
 
 					//now get target partition.
-					index IdAtMax = bestTargetPartition[topVertex];
-					assert(calculateGain(G, part, topVertex, IdAtMax) == topGain);
+					index targetFragment = bestTargetPartition[topVertex];
+					double storedGain = edgeCuts[topVertex][targetFragment] - edgeCuts[topVertex][p];
+					assert(abs(storedGain - topGain) < 0.0001);
+					//double checkedGain = calculateGain(g, part, topVertex, targetFragment);
+					//assert(abs(checkedGain - topGain) < 0.0001);
 
 					count ownSize = fragmentSizes[p];
-					count targetSize = fragmentSizes[IdAtMax];
+					count targetSize = fragmentSizes[targetFragment];
 
-					if (targetSize >= ownSize) continue; //wouldn't make any sense to move, now would it?
+					if (targetSize >= ownSize) {
+						//out of date, update gain
 
-					part.moveToSubset(IdAtMax, topVertex);
+						edgeweight maxCut = -total;
+						index idAtMax = partZ;
+						for (index fragment = 0; fragment < partZ; fragment++) {
+							if (fragment != p && edgeCuts[topVertex][fragment] > maxCut && (!chargedPart[fragment] || !charged[topVertex])  && fragmentSizes[fragment] + nodeWeights[topVertex] < fragmentSizes[p]) {
+								idAtMax = fragment;
+								maxCut = edgeCuts[topVertex][fragment];
+							}
+						}
+						if (idAtMax == partZ) {
+							//cannot be moved anywhere, ignore vertex
+							continue;
+						}
+						double newGain = maxCut - edgeCuts[topVertex][p];
+						bestTargetPartition[topVertex] = idAtMax;
+
+						if (newGain < -(std::get<0>(queues[p].peek()))) {
+							//reinsert into queue, move some other node first
+							queues[p].insert(-newGain, topVertex);
+							continue;
+						} else {
+							/**
+							 * otherwise, proceed, but with different target
+							 */
+							targetFragment = idAtMax;
+						}
+
+					}
+
+					part.moveToSubset(targetFragment, topVertex);
 					moved[topVertex] = true;
 
 					DEBUG("Node ", topVertex, " of weight ", nodeWeights[topVertex], " moved, Imbalance now ", getWeightedImbalance(fragmentSizes, sumNodeWeights, largestNodeWeight,  n,  k));
 
 					//udpate size map
 					fragmentSizes[p] -= nodeWeights[topVertex];
-					fragmentSizes[IdAtMax] += nodeWeights[topVertex];
+					fragmentSizes[targetFragment] += nodeWeights[topVertex];
 
 					//update charge state
 					if (charged[topVertex]) {
 						chargedPart[p] = false;
-						chargedPart[IdAtMax] = true;
+						chargedPart[targetFragment] = true;
 					}
 
-					//update gains of neighbours
-					G.forNeighborsOf(topVertex, [&G, topVertex, p, total, &queues, &part, &subsetIds, &bestTargetPartition, &charged, &chargedPart, &fragmentSizes, &moved, &nodeWeights](index w){
+					//update edge cuts of neighbours
+					g.forNeighborsOf(topVertex, [&g, topVertex, total, p, targetFragment, &queues, &part, &subsetIds, &moved, &bestTargetPartition, &charged, &chargedPart, &edgeCuts, partZ, &nodeWeights, &fragmentSizes](index w){
 						if (!moved[w]) {
 							//update gain
-							edgeweight newMaxGain = -total;
-							index IdAtMax = 0;
-							for (index otherSubset : subsetIds) {
-								edgeweight thisgain = calculateGain(G, part, w, otherSubset);
-								if (thisgain > newMaxGain && otherSubset != part[w] &&  (!chargedPart[otherSubset] || !charged[w]) && fragmentSizes[otherSubset] + nodeWeights[w] < fragmentSizes[part[w]]) {
-									newMaxGain = thisgain;
-									IdAtMax = otherSubset;
+							edgeCuts[w][p] -= g.weight(topVertex, w);
+							edgeCuts[w][targetFragment] += g.weight(topVertex, w);
+
+							edgeweight maxCut = -total;
+							index idAtMax = partZ;
+							index ownFragment = part[w];
+
+							for (index fragment = 0; fragment < partZ; fragment++) {
+								if (fragment != ownFragment && edgeCuts[w][fragment] > maxCut && (!chargedPart[fragment] || !charged[w])  && fragmentSizes[fragment] + nodeWeights[w] < fragmentSizes[part[w]]) {
+									idAtMax = fragment;
+									maxCut = edgeCuts[w][fragment];
 								}
 							}
-							bestTargetPartition[w] = IdAtMax;
+
+							bestTargetPartition[w] = idAtMax;
 
 							//update prioqueue
 							queues[part[w]].remove(w);
-							queues[part[w]].insert(-newMaxGain, w);
+							if (idAtMax < partZ) {
+								queues[part[w]].insert(-(maxCut-edgeCuts[w][ownFragment]), w);
+							}
+
 						}
 					});
 				}
@@ -877,7 +956,6 @@ void MultiLevelPartitioner::enforceBalance(const Graph& G, Partition& part, doub
 
 void MultiLevelPartitioner::repairSingleNodes(const Graph& G, Partition& intermediate) {
 	const count n = G.numberOfNodes();
-	const count z = G.upperNodeIdBound();
 	assert(intermediate.numberOfElements() == n);
 
 	//TODO: this has problems with deleted nodes
