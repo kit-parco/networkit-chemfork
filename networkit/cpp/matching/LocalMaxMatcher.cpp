@@ -41,7 +41,7 @@ void LocalMaxMatcher::run() {
 			edges[e].w = w + Aux::Random::real(1e-6);
 			++e;
 		} else {
-			DEBUG("Edge (", u, ",", v, ") was forbidden, not matched.");
+			TRACE("Edge (", u, ",", v, ") was forbidden, not matched.");
 		}
 	});
 

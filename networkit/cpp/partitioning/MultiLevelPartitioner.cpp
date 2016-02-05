@@ -278,7 +278,7 @@ edgeweight MultiLevelPartitioner::fiducciaMattheysesStep(const Graph& g, Partiti
 	/**
 	 * fill priority queues. Since we want to access the nodes with the maximum gain first but have only minQueues available, we use the negative gain as priority.
 	 */
-	g.forNodes([&queues, &part, &bestTargetPartition, &charged, &chargedPart, &edgeCuts, partZ, total](index v){
+	g.forNodes([&queues, &part, &bestTargetPartition, &charged, &chargedPart, &chargedVertices, &edgeCuts, partZ, k, total](index v){
 		edgeweight maxCut = -total;
 		index idAtMax = partZ;
 		index ownFragment = part[v];
@@ -288,17 +288,24 @@ edgeweight MultiLevelPartitioner::fiducciaMattheysesStep(const Graph& g, Partiti
 				maxCut = edgeCuts[v][fragment];
 			}
 		}
-		assert(idAtMax < partZ);
-		bestTargetPartition[v] = idAtMax;
-		assert(ownFragment < queues.size());
-		queues[ownFragment].insert(-(maxCut-edgeCuts[v][ownFragment]), v); //negative max gain
+
+		if (idAtMax < partZ) {
+			/**
+			 * usually, this should always be true. Only exception: exactly k charged nodes are given as input, and v is one of them.
+			 */
+			bestTargetPartition[v] = idAtMax;
+			assert(ownFragment < queues.size());
+			queues[ownFragment].insert(-(maxCut-edgeCuts[v][ownFragment]), v); //negative max gain
+		} else {
+			assert(chargedVertices.size() == k);
+		}
 	});
 
 	count queuedSum = 0;
 	for (index i = 0; i < queues.size(); i++) {
 		queuedSum += queues[i].size();
 	}
-	assert(queuedSum == n);
+	assert(chargedVertices.size() == k || queuedSum == n);
 
 	/**
 	 * iterate over all vertices and move them, as long as unmoved vertices are left
@@ -881,24 +888,17 @@ void MultiLevelPartitioner::enforceBalance(const Graph& g, Partition& part, doub
 								maxCut = edgeCuts[topVertex][fragment];
 							}
 						}
-						if (idAtMax == partZ) {
-							//cannot be moved anywhere, ignore vertex
-							continue;
-						}
-						double newGain = maxCut - edgeCuts[topVertex][p];
-						bestTargetPartition[topVertex] = idAtMax;
-
-						if (newGain < -(std::get<0>(queues[p].peek()))) {
-							//reinsert into queue, move some other node first
-							queues[p].insert(-newGain, topVertex);
-							continue;
-						} else {
+						if (idAtMax < partZ) {
 							/**
-							 * otherwise, proceed, but with different target
+							 * the node can be moved, but to another fragment
+							 * reinsert into queue
 							 */
-							targetFragment = idAtMax;
+							double newGain = maxCut - edgeCuts[topVertex][p];
+							bestTargetPartition[topVertex] = idAtMax;
+							queues[p].insert(-newGain, topVertex);
 						}
 
+						continue;
 					}
 
 					part.moveToSubset(targetFragment, topVertex);
