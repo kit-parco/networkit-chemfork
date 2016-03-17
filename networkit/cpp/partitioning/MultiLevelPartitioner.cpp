@@ -202,6 +202,8 @@ edgeweight MultiLevelPartitioner::fiducciaMattheysesStep(const Graph& g, Partiti
 	const count k = part.numberOfSubsets();
 	const count partZ = part.upperBound();
 
+	if (k == 1) throw std::runtime_error("FM step with one partition does not really make sense.");
+
 	if (nodeWeights.size() == 0) {
 		nodeWeights.resize(n, 1);
 	}
@@ -598,7 +600,8 @@ Partition MultiLevelPartitioner::growRegions(const Graph& g, const vector<index>
 			}
 		}
 	}
-
+	result.compact();
+	assert(result.numberOfSubsets() == startingPoints.size());
 	//TODO: make sure that all nodes in this subpartition have been visited
 	//g.forNodes([&visited](index v){assert(visited[v]);});
 	return result;
@@ -683,15 +686,17 @@ std::pair<index, index> MultiLevelPartitioner::getMaximumDistancePair(const Grap
 
 	}
 
-	//assert(GraphDistance().unweightedDistance(g, a,b) == maxDistance); does not need to be true, there might be a shortcut through another partitition
+	//assert(GraphDistance().unweightedDistance(g, a,b) == maxDistance); does not need to be true, there might be a shortcut through another partition
 	return {a, b};
 }
 
 index MultiLevelPartitioner::getFarthestNode(const Graph& G, std::vector<index> seedNodes) {
 	/**
-	 * Yet another BFS.
+	 * Yet another BFS. This currently has problems with unconnected graphs.
 	 */
 	const count z = G.upperNodeIdBound();
+
+	if (seedNodes.size() == 0) return G.randomNode();
 
 	vector<bool> visited(z, false);
 	queue<index> bfsQueue;
@@ -699,15 +704,23 @@ index MultiLevelPartitioner::getFarthestNode(const Graph& G, std::vector<index> 
 	for (index seed : seedNodes) {
 		bfsQueue.push(seed);
 		assert(G.hasNode(seed));
+		visited[seed] = true;
 	}
 
-	index nextNode = G.randomNode(); //will be overwritten anyway, except if seedNodes was empty
+	index nextNode = G.randomNode(); //will be overwritten anyway
 	while (bfsQueue.size() > 0) {
 		nextNode = bfsQueue.front();
 		bfsQueue.pop();
 		visited[nextNode] = true;
 		G.forNeighborsOf(nextNode, [&visited, &bfsQueue](index v){if (!visited[v]) bfsQueue.push(v);});
 	}
+
+	//if nodes are unvisited, the graph is unconnected and the unvisited nodes are in fact the farthest
+	for (node v : G.nodes()) {
+		if (!visited[v]) nextNode = v;
+		break;
+	}
+
 	return nextNode;
 }
 
