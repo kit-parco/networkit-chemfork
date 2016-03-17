@@ -11,6 +11,7 @@
 #include "../../graph/Graph.h"
 #include "../../Globals.h"
 #include "../../generators/BarabasiAlbertGenerator.h"
+#include "../../generators/ErdosRenyiGenerator.h"
 #include "../../generators/HyperbolicGenerator.h"
 #include "../../io/METISGraphReader.h"
 #include "../../io/PartitionReader.h"
@@ -294,6 +295,25 @@ TEST_F(MultiLevelPartitionerGTest, testPartitionerNaiveComparisonRealGraph) {
 	double imbalanceNaiveFM = naive.getImbalance(targetK);
 	DEBUG("Naive Partition, cut: ", cutNaive, "->", cutNaiveFM, ", imbalance: ", imbalanceNaive, "->", imbalanceNaiveFM);
 	EXPECT_LE(cutWeight, cutNaiveFM);
+}
+
+TEST_F(MultiLevelPartitionerGTest, testGapRepair) {
+	const int runs = 100;
+	for (int i = 0; i < runs; i++) {
+		const count n = Aux::Random::integer(10,100);
+		Graph G = ErdosRenyiGenerator(n, Aux::Random::real(), false).generate();
+		const count k = Aux::Random::integer(2, int(n/2));
+		const double epsilon = Aux::Random::real();
+
+		MultiLevelPartitioner part(G, k, epsilon, false, {}, true);
+		part.run();
+		Partition result = part.getPartition();
+		for (node v : G.nodes()) {
+			if (G.hasNode(v+2) && result[v+2] == result[v]) {
+				EXPECT_EQ(result[v+1], result[v]);
+			}
+		}
+	}
 }
 
 }//end namespace NetworKit
