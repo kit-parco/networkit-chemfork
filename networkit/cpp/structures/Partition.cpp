@@ -184,4 +184,25 @@ std::set<index> Partition::getSubsetIds() const {
 	return ids;
 }
 
+edgeweight Partition::calculateCutWeight(const Graph& G) const {
+	assert(G.numberOfNodes() == numberOfElements());
+	edgeweight result = 0;
+	G.forEdges([&](index u, index v){
+		if (!inSameSubset(u,v)) {
+			result += G.weight(u,v);
+		}
+	});
+	return result;
+}
+
+double Partition::getImbalance(count desiredPartitions) const {
+	double optimalSize = ceil(double(numberOfElements()) / desiredPartitions);
+	double maxSize = 0;
+	for (auto entry : subsetSizeMap()) {
+		if (entry.second > maxSize) maxSize = entry.second;
+	}
+
+	return (maxSize - optimalSize) / optimalSize;
+}
+
 } /* namespace NetworKit */

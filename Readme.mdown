@@ -1,3 +1,9 @@
+Partitioning Protein Graphs
+=========
+
+Most of the algorithms used in the paper `Better partitions of protein graphs for subsystem quantum chemistry` are realized as python functions in the module `chempartlib2.py`.
+This module uses the NetworKit framework, which is described below. The Multi-Level algorithm is implemented in C++ within the NetworKit source tree, it can be found at `networkit/cpp/partitioning`.
+
 NetworKit
 =========
 
@@ -14,7 +20,6 @@ NetworKit is a Python module. High-performance algorithms are written in C++ and
 via the Cython toolchain. Python in turn gives us the ability to work interactively and a
 rich environment of tools for data analysis and scientific computing.
 Furthermore, NetworKit's core can be built and used as a native library if needed.
-
 
 [networkit]: https://networkit.iti.kit.edu/
 

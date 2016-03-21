@@ -99,7 +99,7 @@ TEST_F(MatcherGTest, testPgaMatching) {
 	count numExpEdges = n / 2;
 	bool isProper = M.isProper(G);
 	EXPECT_TRUE(isProper);
-	EXPECT_EQ(M.size(G), numExpEdges);
+	EXPECT_EQ(numExpEdges, M.size(G));
 	DEBUG("Finished PGA matching on 50-clique");
 
 

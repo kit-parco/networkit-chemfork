@@ -1,19 +1,19 @@
 /*
- * MatchingCoarsening.cpp
+ * MatchingContracter.cpp
  *
  *  Created on: 30.10.2012
  *      Author: Christian Staudt (christian.staudt@kit.edu)
  */
 
-#include "MatchingCoarsening.h"
+#include "MatchingContracter.h"
 
 namespace NetworKit {
 
-MatchingCoarsening::MatchingCoarsening(const Graph& G, const Matching& M, bool noSelfLoops) : GraphCoarsening(G), M(M), noSelfLoops(noSelfLoops) {
+MatchingContracter::MatchingContracter(const Graph& G, const Matching& M, bool noSelfLoops) : GraphCoarsening(G), M(M), noSelfLoops(noSelfLoops) {
 	if (G.isDirected()) throw std::runtime_error("Only defined for undirected graphs.");
 }
 
-void MatchingCoarsening::run() {
+void MatchingContracter::run() {
 	count n = G.numberOfNodes();
 	index z = G.upperNodeIdBound();
 	count cn = n - M.size(G);

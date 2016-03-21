@@ -3014,6 +3014,7 @@ cdef extern from "cpp/structures/Partition.h":
 		void moveToSubset(index s, index e) except +
 		void toSingleton(index e) except +
 		void allToSingletons() except +
+		void allToOnePartition() except +
 		void mergeSubsets(index s, index t) except +
 		void setUpperBound(index upper) except +
 		index upperBound() except +
@@ -3062,6 +3063,18 @@ cdef class Partition:
 			Number of elements in the partition.
 		"""
 		return self._this.numberOfElements()
+
+	def __str__(self):
+		"""
+		Returns
+		-------
+		str
+			String representation of this partition
+		"""
+		result = "NetworKit::Partition:"
+		for index in range(self._this.numberOfElements()):
+			result += "\n" + str(index) + ":" + str(self._this[index])
+		return result
 
 	def __getitem__(self, index e):
 		""" Get the set (id) in which the element `e` is contained.
@@ -3171,6 +3184,10 @@ cdef class Partition:
 		""" Assigns every element to a singleton set. Set id is equal to element id. """
 		self._this.allToSingletons()
 
+	def allToOnePartition(self):
+		""" Assigns every element to the same partition. """
+		self._this.allToOnePartition()
+
 	def mergeSubsets(self, index s, index t):
 		""" Assigns the elements from both sets to a new set and returns the id of it.
 
@@ -3189,8 +3206,10 @@ cdef class Partition:
 		self._this.mergeSubsets(s, t)
 
 	def __getitem__(self, index):
-		return self._this[index]
-
+		if index < self._this.numberOfElements():
+			return self._this[index]
+		else:
+			raise IndexError()
 
 	def setUpperBound(self, index upper):
 		""" Sets an upper bound for the subset ids that **can** be assigned.
@@ -6158,7 +6177,6 @@ cdef extern from "cpp/coarsening/MatchingCoarsening.h":
 	cdef cppclass _MatchingCoarsening "NetworKit::MatchingCoarsening"(_GraphCoarsening):
 		_MatchingCoarsening(_Graph, _Matching, bool) except +
 
-
 cdef class MatchingCoarsening(GraphCoarsening):
 	"""Coarsens graph according to a matching.
  	Parameters
@@ -6172,6 +6190,62 @@ cdef class MatchingCoarsening(GraphCoarsening):
 	def __cinit__(self, Graph G not None, Matching M not None, bool noSelfLoops=False):
 		self._this = new _MatchingCoarsening(G._this, M._this, noSelfLoops)
 
+
+# Module: partitioning
+
+cdef extern from "cpp/partitioning/MultiLevelPartitioner.h":
+	cdef cppclass _MultiLevelPartitioner "NetworKit::MultiLevelPartitioner":
+		_MultiLevelPartitioner(_Graph G, count numParts, double imbalance, bool bisectRecursively, vector[index] chargedVertices, bool avoidSurroundedNodes, _Partition previous) except +
+
+		void run() except +
+		_Partition getPartition() except +
+
+cdef extern from "cpp/partitioning/MultiLevelPartitioner.h" namespace "NetworKit::MultiLevelPartitioner":
+	edgeweight fiducciaMattheysesStep(_Graph G, _Partition &part, double maxImbalance, vector[index] chargedVertices, vector[double] nodeWeights) except +
+		
+cdef class MultiLevelPartitioner:
+	"""
+	Uses graph coarsening and an adapted Fiduccia-Matheyses step to partition the input graph.
+	This method also accepts a list of charged vertices, no pair of them will end up in the same subset.
+
+	Parameters
+	-----------
+	G : graph which is to be partitioned
+	numParts : number of subsets the partition should have
+	imbalance : maximum imbalance. The largest subset will have a size of at most (1+imbalance)*ceil(G.numberOfNodes() / numParts) - except where impossible.
+	bisectRecursively : Whether to use recursive bisection for the initial partition
+	chargedVertices : A list of nodes which need some space
+	avoidSurroundedNodes : If true, partitioner avoids partitions where part[v-1] == part[v+1] != part[v]
+	"""
+	cdef _MultiLevelPartitioner* _this
+
+	def __cinit__(self, Graph G, count numParts, double imbalance, bool bisectRecursively, vector[index] chargedVertices, bool avoidSurroundedNodes=False, Partition previous = None):
+		if previous == None:
+			previous = Partition(G.numberOfNodes())
+			previous.allToOnePartition()
+		self._this = new _MultiLevelPartitioner(G._this, numParts, imbalance, bisectRecursively, chargedVertices, avoidSurroundedNodes, previous._this)
+
+	@staticmethod
+	def fiducciaMattheysesStep(Graph G, Partition part, double maxImbalance, vector[index] chargedVertices, vector[double] nodeWeights):
+		"""
+		Performs a Fiduccia-Mattheyses step on the input partition, making local improvements on it. The number of subsets stays the same.
+
+		Parameters
+		-----------
+		G : graph which is to be partitioned. This argument will not be changed.
+		part : previous partition, which is to be improved
+		maxImbalance: maximum imbalance of the partition. The largest subset will have size at most math.ceil(n/k)*(1+maxImbalance), for k subsets.
+
+		"""
+
+		return fiducciaMattheysesStep(G._this, part._this, maxImbalance, chargedVertices, nodeWeights)
+
+	def run(self):
+		self._this.run()
+
+	def getPartition(self):
+		return Partition(0).setThis(self._this.getPartition())
+	
 
 # Module: scd
 
