@@ -294,6 +294,7 @@ cdef extern from "cpp/graph/Graph.h":
 		void BFSEdgesFrom[Callback](node r, Callback c) except +
 		void DFSfrom[Callback](node r, Callback c) except +
 		void DFSEdgesFrom[Callback](node r, Callback c) except +
+		bool checkConsistency() except +
 
 cdef cppclass EdgeCallBackWrapper:
 	void* callback
@@ -1082,6 +1083,12 @@ cdef class Graph:
 		finally:
 			del wrapper
 
+	def checkConsistency(self):
+		"""
+		Check for invalid graph states, such as multi-edges.
+		"""
+		return self._this.checkConsistency()
+
 # TODO: expose all methods
 
 cdef extern from "cpp/graph/SSSP.h":
@@ -1626,12 +1633,18 @@ cdef class Luby:
 cdef extern from "cpp/generators/BarabasiAlbertGenerator.h":
 	cdef cppclass _BarabasiAlbertGenerator "NetworKit::BarabasiAlbertGenerator":
 		_BarabasiAlbertGenerator() except +
-		_BarabasiAlbertGenerator(count k, count nMax, count n0) except +
-		#_Graph* _generate()
+		_BarabasiAlbertGenerator(count k, count nMax, count n0, bool batagelj) except +
+		_BarabasiAlbertGenerator(count k, count nMax, const _Graph & initGraph, bool batagelj) except +
 		_Graph generate() except +
 
 cdef class BarabasiAlbertGenerator:
-	""" Generates a scale-free graph using the Barabasi-Albert preferential attachment model.
+	"""
+	This generator implements the preferential attachment model as introduced by Barabasi and Albert[1].
+	The original algorithm is very slow and thus, the much faster method from Batagelj and Brandes[2] is
+	implemented and the current default.
+	The original method can be chosen by setting \p batagelj to false.
+	[1] Barabasi, Albert: Emergence of Scaling in Random Networks http://arxiv.org/pdf/cond-mat/9910332.pdf
+	[2] ALG 5 of Batagelj, Brandes: Efficient Generation of Large Random Networks https://kops.uni-konstanz.de/bitstream/handle/123456789/5799/random.pdf?sequence=1
 
 	Parameters
 	----------
@@ -1641,20 +1654,25 @@ cdef class BarabasiAlbertGenerator:
 		maximum number of nodes produced
 	n0 : count
 		number of starting nodes
-	 """
+	batagelj : bool
+		Specifies whether to use batagelj's method or the original one.
+	"""
 	cdef _BarabasiAlbertGenerator _this
 
-	def __cinit__(self, k, nMax, n0):
-		self._this = _BarabasiAlbertGenerator(k, nMax, n0)
+	def __cinit__(self, count k, count nMax, n0=0, bool batagelj=True):
+		if isinstance(n0, Graph):
+			self._this = _BarabasiAlbertGenerator(k, nMax, (<Graph>n0)._this, batagelj)
+		else:
+			self._this = _BarabasiAlbertGenerator(k, nMax, <count>n0, batagelj)
 
 	def generate(self):
 		return Graph().setThis(self._this.generate())
 
 	@classmethod
-	def fit(cls, Graph G):
+	def fit(cls, Graph G, scale=1):
 		(n, m) = G.size()
 		k = math.floor(m / n)
-		return cls(nMax=n, k=k, n0=k)
+		return cls(nMax=scale * n, k=k, n0=k)
 
 
 cdef extern from "cpp/generators/PubWebGenerator.h":
@@ -1740,14 +1758,14 @@ cdef class ErdosRenyiGenerator:
 		return Graph(0).setThis(self._this.generate())
 
 	@classmethod
-	def fit(cls, Graph G):
+	def fit(cls, Graph G, scale=1):
 		""" Fit model to input graph"""
 		(n, m) = G.size()
 		if G.isDirected():
 			p = p = m / (n * (n-1))
 		else:
 			p = m / ((n * (n-1)) / 2)
-		return cls(n, p)
+		return cls(scale * n, p)
 
 cdef extern from "cpp/generators/DorogovtsevMendesGenerator.h":
 	cdef cppclass _DorogovtsevMendesGenerator "NetworKit::DorogovtsevMendesGenerator":
@@ -1786,8 +1804,8 @@ cdef class DorogovtsevMendesGenerator:
 		return Graph(0).setThis(self._this.generate())
 
 	@classmethod
-	def fit(cls, Graph G):
-		return cls(G.numberOfNodes())
+	def fit(cls, Graph G, scale=1):
+		return cls(scale * G.numberOfNodes())
 
 
 cdef extern from "cpp/generators/RegularRingLatticeGenerator.h":
@@ -1961,11 +1979,11 @@ cdef class ChungLuGenerator:
 		return Graph(0).setThis(self._this.generate())
 
 	@classmethod
-	def fit(cls, Graph G):
+	def fit(cls, Graph G, scale=1):
 		""" Fit model to input graph"""
 		(n, m) = G.size()
 		degSeq = DegreeCentrality(G).run().scores()
-		return cls(degSeq)
+		return cls(degSeq * scale)
 
 
 cdef extern from "cpp/generators/HavelHakimiGenerator.h":
@@ -2021,9 +2039,9 @@ cdef class HavelHakimiGenerator:
 		return Graph(0).setThis(self._this.generate())
 
 	@classmethod
-	def fit(cls, Graph G):
+	def fit(cls, Graph G, scale=1):
 		degSeq = DegreeCentrality(G).run().scores()
-		return cls(degSeq, ignoreIfRealizable=True)
+		return cls(degSeq * scale, ignoreIfRealizable=True)
 
 cdef extern from "cpp/generators/EdgeSwitchingMarkovChainGenerator.h":
 	cdef cppclass _EdgeSwitchingMarkovChainGenerator "NetworKit::EdgeSwitchingMarkovChainGenerator":
@@ -2082,6 +2100,11 @@ cdef class EdgeSwitchingMarkovChainGenerator:
 			The generated graph.
 		"""
 		return Graph().setThis(self._this.generate())
+
+	@classmethod
+	def fit(cls, Graph G, scale=1):
+		degSeq = DegreeCentrality(G).run().scores()
+		return cls(degSeq * scale, ignoreIfRealizable=True)
 
 
 cdef extern from "cpp/generators/HyperbolicGenerator.h":
@@ -2146,7 +2169,7 @@ For a temperature of 0, the model resembles a unit-disk model in hyperbolic spac
 		return Graph(0).setThis(self._this.generateExternal(angles, radii, k, gamma))
 
 	@classmethod
-	def fit(cls, Graph G):
+	def fit(cls, Graph G, scale=1):
 		""" Fit model to input graph"""
 		import powerlaw
 		degSeq = DegreeCentrality(G).run().scores()
@@ -2154,12 +2177,12 @@ For a temperature of 0, the model resembles a unit-disk model in hyperbolic spac
 		gamma = fit.alpha
 		(n, m) = G.size()
 		k = 2 * (m / n)
-		return cls(n, k, gamma)
+		return cls(n * scale, k, gamma)
 
 
 cdef extern from "cpp/generators/RmatGenerator.h":
 	cdef cppclass _RmatGenerator "NetworKit::RmatGenerator":
-		_RmatGenerator(count scale, count edgeFactor, double a, double b, double c, double d) except +
+		_RmatGenerator(count scale, count edgeFactor, double a, double b, double c, double d, bool weighted) except +
 		_Graph generate() except +
 
 cdef class RmatGenerator:
@@ -2186,13 +2209,15 @@ cdef class RmatGenerator:
 		Probability for quadrant lower left
 	d : double
 		Probability for quadrant lower right
-
+	weighted : bool
+		result graph weighted?
 	"""
 
 	cdef _RmatGenerator* _this
+	paths = {"workingDir" : None, "kronfitPath" : None}
 
-	def __cinit__(self, count scale, count edgeFactor, double a, double b, double c, double d):
-		self._this = new _RmatGenerator(scale, edgeFactor, a, b, c, d)
+	def __cinit__(self, count scale, count edgeFactor, double a, double b, double c, double d, bool weighted=False):
+		self._this = new _RmatGenerator(scale, edgeFactor, a, b, c, d, weighted)
 
 	def __dealloc__(self):
 		del self._this
@@ -2206,6 +2231,53 @@ cdef class RmatGenerator:
 			The generated graph.
 		"""
 		return Graph(0).setThis(self._this.generate())
+
+	@classmethod
+	def setPaths(cls, kronfitPath, workingDir="/tmp"):
+		cls.paths["kronfitPath"] = kronfitPath
+		cls.paths["workingDir"] = workingDir
+
+	@classmethod
+	def fit(cls, G, scale=1, kronfit=True, iterations=5):
+		import math
+		import re
+		import subprocess
+		import os
+		import random
+		from networkit import graphio
+		if kronfit:
+			if cls.paths["workingDir"] is None:
+				raise RuntimeError("call setPaths class method first to configure")
+			# write graph
+			tmpGraphPath = os.path.join(cls.paths["workingDir"], "{0}.edgelist".format(G.getName()))
+			graphio.writeGraph(G, tmpGraphPath, graphio.Format.EdgeListTabOne)
+			# call kronfit
+			args = [cls.paths["kronfitPath"], "-i:{0}".format(tmpGraphPath), "-gi:{0}".format(str(iterations))]
+			subprocess.call(args)
+			# read estimated parameters
+			with open("KronFit-{0}.tab".format(G.getName())) as resultFile:
+				for i, line in enumerate(resultFile):
+					if i == 7:
+						matches = re.findall("\d+\.\d+", line)
+						weights = [float(s) for s in matches]
+		else:
+			# random weights because kronfit is slow
+			weights = (random.random(), random.random(), random.random(), random.random())
+		# normalize
+		s = sum(weights)
+		nweights = [w / s for w in weights]
+		(a,b,c,d) = nweights
+		# other parameters
+		(n,m) = G.size()
+		s1 = math.floor(math.log(n, 2))
+		s2 = math.ceil(math.log(n, 2))
+		if abs(n - s1) > abs(n - s2):
+			scaleParam1 = s2
+		else:
+			scaleParam1 = s1
+		scaleParameter = scaleParam1 + math.floor(math.log(scale, 2))
+		edgeFactor = math.floor(m / n)
+		return RmatGenerator(scaleParameter, edgeFactor, a, b, c, d)
 
 cdef extern from "cpp/generators/PowerlawDegreeSequence.h":
 	cdef cppclass _PowerlawDegreeSequence "NetworKit::PowerlawDegreeSequence":
@@ -2487,19 +2559,30 @@ cdef class LFRGenerator(Algorithm):
 
 
 	@classmethod
-	def fit(cls, Graph G):
+	def fit(cls, Graph G, scale=1):
 		""" Fit model to input graph"""
 		(n, m) = G.size()
 		# detect communities
 		communities = PLM(G).run().getPartition()
-		gen = cls(n)
-		gen.setPartition(communities)
+		gen = cls(n * scale)
+		if scale > 1:
+			# scale communities
+			cData = communities.getVector()
+			cDataCopy = cData[:]
+			b = communities.upperBound()
+			for s in range(1, scale):
+				cDataExtend = [i + (b * s) for i in cDataCopy]
+				cData = cData + cDataExtend
+			assert (len(cData) == n * scale)
+			gen.setPartition(Partition(0, cData))
+		else:
+			gen.setPartition(communities)
 		# degree sequence
 		degSeq = DegreeCentrality(G).run().scores()
-		gen.setDegreeSequence(degSeq)
+		gen.setDegreeSequence(degSeq * scale)
 		# mixing parameter
 		localCoverage = LocalPartitionCoverage(G, communities).run().scores()
-		gen.setMu((1.0 - x for x in localCoverage))
+		gen.setMu([1.0 - x for x in localCoverage] * scale)
 		return gen
 
 
@@ -2923,6 +3006,7 @@ cdef extern from "cpp/structures/Partition.h":
 		_Partition() except +
 		_Partition(index) except +
 		_Partition(_Partition) except +
+		_Partition(vector[index]) except +
 		index subsetOf(index e) except +
 		index extend() except +
 		void remove(index e) except +
@@ -2965,8 +3049,11 @@ cdef class Partition:
 	"""
 	cdef _Partition _this
 
-	def __cinit__(self, index size=0):
-		self._this = move(_Partition(size))
+	def __cinit__(self, index size=0, vector[index] data=[]):
+		if data.size() != 0:
+			self._this = move(_Partition(data))
+		else:
+			self._this = move(_Partition(size))
 
 	def __len__(self):
 		"""
@@ -4805,7 +4892,7 @@ cdef class StronglyConnectedComponents:
 
 
 cdef extern from "cpp/global/ClusteringCoefficient.h" namespace "NetworKit::ClusteringCoefficient":
-		double avgLocal(_Graph G) nogil except +
+		double avgLocal(_Graph G, bool turbo) nogil except +
 		double sequentialAvgLocal(_Graph G) nogil except +
 		double approxAvgLocal(_Graph G, count trials) nogil except +
 		double exactGlobal(_Graph G) nogil except +
@@ -4813,7 +4900,7 @@ cdef extern from "cpp/global/ClusteringCoefficient.h" namespace "NetworKit::Clus
 
 cdef class ClusteringCoefficient:
 	@staticmethod
-	def avgLocal(Graph G):
+	def avgLocal(Graph G, bool turbo = False):
 		"""
 		DEPRECATED: Use centrality.LocalClusteringCoefficient and take average.
 
@@ -4836,7 +4923,7 @@ cdef class ClusteringCoefficient:
 		"""
 		cdef double ret
 		with nogil:
-			ret = avgLocal(G._this)
+			ret = avgLocal(G._this, turbo)
 		return ret
 
 	@staticmethod
@@ -4884,91 +4971,38 @@ cdef class ClusteringCoefficient:
 			ret = approxGlobal(G._this, trials)
 		return ret
 
+cdef extern from "cpp/distance/Diameter.h" namespace "NetworKit":
+	cdef enum DiameterAlgo:
+		automatic = 0
+		exact = 1
+		estimatedRange = 2
+		estimatedSamples = 3
+		estimatedPedantic = 4
+
+class _DiameterAlgo(object):
+	Automatic = automatic
+	Exact = exact
+	EstimatedRange = estimatedRange
+	EstimatedSamples = estimatedSamples
+	EstimatedPedantic = estimatedPedantic
 
 cdef extern from "cpp/distance/Diameter.h" namespace "NetworKit::Diameter":
-	pair[count, count] estimatedDiameterRange(_Graph G, double error) nogil except +
-	count exactDiameter(_Graph G) nogil except +
-	edgeweight estimatedVertexDiameter(_Graph G, count) nogil except +
-	edgeweight estimatedVertexDiameterPedantic(_Graph G) nogil except +
+	cdef cppclass _Diameter "NetworKit::Diameter"(_Algorithm):
+		_Diameter(_Graph G, DiameterAlgo algo, double error, count nSamples) except +
+		pair[count, count] getDiameter() nogil except +
 
-cdef class Diameter:
+cdef class Diameter(Algorithm):
+	cdef Graph _G
 	"""
 	TODO: docstring
 	"""
+	def __cinit__(self, Graph G not None, algo = _DiameterAlgo.Automatic, error = -1., nSamples = 0):
+		self._G = G
+		self._this = new _Diameter(G._this, algo, error, nSamples)
 
-	@staticmethod
-	def estimatedDiameterRange(Graph G, double error=0.1):
-		""" Estimates a range for the diameter of @a G.
+	def getDiameter(self):
+		return (<_Diameter*>(self._this)).getDiameter()
 
-		The algorithm is based on the ExactSumSweep algorithm presented in
-		Michele Borassi, Pierluigi Crescenzi, Michel Habib, Walter A. Kosters, Andrea Marino, Frank W. Takes,
-		Fast diameter and radius BFS-based computation in (weakly connected) real-world graphs: With an application to the six degrees of separation games,
-		Theoretical Computer Science, Volume 586, 27 June 2015, Pages 59-80, ISSN 0304-3975,
-		http://dx.doi.org/10.1016/j.tcs.2015.02.033.
-		(http://www.sciencedirect.com/science/article/pii/S0304397515001644)
-
-		Parameters
-		----------
-		G : Graph
-			The graph
-		error : double
-			The maximum allowed relative error. Set to 0 for the exact diameter.
-
-		Returns
-		-------
-		pair
-			Pair of lower and upper bound for diameter.
-		"""
-		cdef pair[count, count] ret
-		with nogil:
-			ret = estimatedDiameterRange(G._this, error)
-		return ret
-
-	@staticmethod
-	def exactDiameter(Graph G):
-		""" Get the exact diameter of the graph `G`.
-
-		Parameters
-		----------
-		G : Graph
-			The graph.
-
-		Returns
-		-------
-		edgeweight
-			Exact diameter of the graph `G`.
-		"""
-		cdef edgeweight diam
-		with nogil:
-			diam = exactDiameter(G._this)
-		return diam
-
-	@staticmethod
-	def estimatedVertexDiameter(Graph G, count samples):
-		""" Get a 2-approximation of the node diameter (unweighted diameter) of `G`.
-
-		Parameters
-		----------
-		G : Graph
-			The graph.
-		samples : count
-			One sample is enough if the graph is connected. If there
-			are multiple connected components, then the number of samples
-			must be chosen so that the probability of sampling the component
-			with the largest diameter ist high.
-
-		Returns
-		-------
-		edgeweight
-			A 2-approximation of the vertex diameter (unweighted diameter) of `G`.
-		"""
-		cdef edgeweight diam
-		with nogil:
-			if samples == 0:
-				diam = estimatedVertexDiameterPedantic(G._this)
-			else:
-				diam = estimatedVertexDiameter(G._this, samples)
-		return diam
 
 cdef extern from "cpp/distance/Eccentricity.h" namespace "NetworKit::Eccentricity":
 	pair[node, count] getValue(_Graph G, node v) except +
@@ -4981,8 +5015,6 @@ cdef class Eccentricity:
 	@staticmethod
 	def getValue(Graph G, v):
 		return getValue(G._this, v)
-
-
 
 
 cdef extern from "cpp/distance/EffectiveDiameter.h" namespace "NetworKit::EffectiveDiameter":
@@ -5288,14 +5320,14 @@ cdef class KatzCentrality(Centrality):
 
 cdef extern from "cpp/centrality/ApproxBetweenness.h":
 	cdef cppclass _ApproxBetweenness "NetworKit::ApproxBetweenness" (_Centrality):
-		_ApproxBetweenness(_Graph, double, double, count) except +
+		_ApproxBetweenness(_Graph, double, double, count, double) except +
 		count numberOfSamples() except +
 
 cdef class ApproxBetweenness(Centrality):
 	""" Approximation of betweenness centrality according to algorithm described in
  	Matteo Riondato and Evgenios M. Kornaropoulos: Fast Approximation of Betweenness Centrality through Sampling
 
- 	ApproxBetweenness(G, epsilon=0.01, delta=0.1)
+ 	ApproxBetweenness(G, epsilon=0.01, delta=0.1, diameterSamples=0, universalConstant=1.0)
 
  	The algorithm approximates the betweenness of all vertices so that the scores are
 	within an additive error epsilon with probability at least (1- delta).
@@ -5309,11 +5341,22 @@ cdef class ApproxBetweenness(Centrality):
 		maximum additive error
 	delta : double, optional
 		probability that the values are within the error guarantee
+	diameterSamples: count, optional
+		if 0 (the default), use the possibly slow estimation of the
+		vertex diameter which definitely  guarantees approximation
+		quality. Otherwise, use a fast heuristic that has a higher
+		chance of getting the estimate right the higher the number of
+		samples (note: there is no approximation guarantee when using
+		the heuristic).
+	universalConstant: double, optional
+		the universal constant to be used in computing the sample size.
+		It is 1 by default. Some references suggest using 0.5, but there
+		is no guarantee in this case.
 	"""
 
-	def __cinit__(self, Graph G, epsilon=0.01, delta=0.1, diameterSamples=0):
+	def __cinit__(self, Graph G, epsilon=0.1, delta=0.1, diameterSamples=0, universalConstant=1.0):
 		self._G = G
-		self._this = new _ApproxBetweenness(G._this, epsilon, delta, diameterSamples)
+		self._this = new _ApproxBetweenness(G._this, epsilon, delta, diameterSamples, universalConstant)
 
 	def numberOfSamples(self):
 		return (<_ApproxBetweenness*>(self._this)).numberOfSamples()
@@ -5434,7 +5477,7 @@ cdef class EigenvectorCentrality(Centrality):
 
 cdef extern from "cpp/centrality/CoreDecomposition.h":
 	cdef cppclass _CoreDecomposition "NetworKit::CoreDecomposition" (_Centrality):
-		_CoreDecomposition(_Graph, bool) except +
+		_CoreDecomposition(_Graph, bool, bool) except +
 		_Cover getCover() except +
 		_Partition getPartition() except +
 		index maxCoreNumber() except +
@@ -5450,11 +5493,15 @@ cdef class CoreDecomposition(Centrality):
 	----------
 	G : Graph
 		The graph.
+	normalized : boolean
+		Divide each core number by the maximum degree.
+	enforceBucketQueueAlgorithm : boolean
+		enforce switch to sequential algorithm
 	"""
 
-	def __cinit__(self, Graph G, bool enforceBucketQueueAlgorithm=False):
+	def __cinit__(self, Graph G, bool normalized=False, bool enforceBucketQueueAlgorithm=False):
 		self._G = G
-		self._this = new _CoreDecomposition(G._this, enforceBucketQueueAlgorithm)
+		self._this = new _CoreDecomposition(G._this, normalized, enforceBucketQueueAlgorithm)
 
 	def maxCoreNumber(self):
 		""" Get maximum core number.
@@ -5520,9 +5567,31 @@ cdef class LocalClusteringCoefficient(Centrality):
 		self._this = new _LocalClusteringCoefficient(G._this, turbo)
 
 
+cdef extern from "cpp/centrality/Sfigality.h":
+	cdef cppclass _Sfigality "NetworKit::Sfigality" (_Centrality):
+		_Sfigality(_Graph) except +
+
+cdef class Sfigality(Centrality):
+	"""
+	Sfigality is a new type of node centrality measures that is high if neighboring nodes have a higher degree, e.g. in social networks, if your friends have more friends than you. Formally:
+
+		$$\sigma(u) = \frac{| \{ v: \{u,v\} \in E, deg(u) < deg(v) \} |}{ deg(u) }$$
+
+ 	Parameters
+ 	----------
+ 	G : Graph
+ 		The graph.
+	"""
+
+	def __cinit__(self, Graph G):
+		self._G = G
+		self._this = new _Sfigality(G._this)
+
+
+
 cdef extern from "cpp/centrality/DynApproxBetweenness.h":
 	cdef cppclass _DynApproxBetweenness "NetworKit::DynApproxBetweenness":
-		_DynApproxBetweenness(_Graph, double, double, bool) except +
+		_DynApproxBetweenness(_Graph, double, double, bool, double) except +
 		void run() nogil except +
 		void update(vector[_GraphEvent]) except +
 		vector[double] scores() except +
@@ -5534,7 +5603,7 @@ cdef class DynApproxBetweenness:
 	""" New dynamic algorithm for the approximation of betweenness centrality with
 	a guaranteed error
 
-	DynApproxBetweenness(G, epsilon=0.01, delta=0.1, [storePredecessors])
+	DynApproxBetweenness(G, epsilon=0.01, delta=0.1, storePredecessors=True, universalConstant=1.0)
 
 	The algorithm approximates the betweenness of all vertices so that the scores are
 	within an additive error epsilon with probability at least (1- delta).
@@ -5548,15 +5617,19 @@ cdef class DynApproxBetweenness:
 		maximum additive error
 	delta : double, optional
 		probability that the values are within the error guarantee
-	storePredecessors : bool
+	storePredecessors : bool, optional
 		store lists of predecessors?
+	universalConstant: double, optional
+		the universal constant to be used in computing the sample size.
+		It is 1 by default. Some references suggest using 0.5, but there
+		is no guarantee in this case.
 	"""
 	cdef _DynApproxBetweenness* _this
 	cdef Graph _G
 
-	def __cinit__(self, Graph G, epsilon=0.01, delta=0.1, storePredecessors = True):
+	def __cinit__(self, Graph G, epsilon=0.01, delta=0.1, storePredecessors = True, universalConstant=1.0):
 		self._G = G
-		self._this = new _DynApproxBetweenness(G._this, epsilon, delta, storePredecessors)
+		self._this = new _DynApproxBetweenness(G._this, epsilon, delta, storePredecessors, universalConstant)
 
 	# this is necessary so that the C++ object gets properly garbage collected
 	def __dealloc__(self):
@@ -5619,8 +5692,51 @@ cdef class DynApproxBetweenness:
 		"""
 		Get number of path samples used in last calculation.
 		"""
-
 		return self._this.getNumberOfSamples()
+
+cdef extern from "cpp/centrality/PermanenceCentrality.h":
+	cdef cppclass _PermanenceCentrality "NetworKit::PermanenceCentrality":
+		_PermanenceCentrality(const _Graph& G, const _Partition& P) except +
+		void run() nogil except +
+		double getIntraClustering(node u) except +
+		double getPermanence(node u) except +
+
+cdef class PermanenceCentrality:
+	"""
+	Permanence centrality
+
+	This centrality measure measure how well a vertex belongs to its community. The values are calculated on the fly, the partion may be changed in between the requests.
+	For details see
+
+	Tanmoy Chakraborty, Sriram Srinivasan, Niloy Ganguly, Animesh Mukherjee, and Sanjukta Bhowmick. 2014.
+	On the permanence of vertices in network communities.
+	In Proceedings of the 20th ACM SIGKDD international conference on Knowledge discovery and data mining (KDD '14).
+	ACM, New York, NY, USA, 1396-1405. DOI: http://dx.doi.org/10.1145/2623330.2623707
+
+	FIXME: does not use the common centrality interface yet.
+	"""
+	cdef _PermanenceCentrality *_this
+	cdef Graph _G
+	cdef Partition _P
+
+	def __cinit__(self, Graph G, Partition P):
+		self._this = new _PermanenceCentrality(G._this, P._this)
+		self._G = G
+		self._P = P
+
+	def __dealloc__(self):
+		del self._this
+
+	def run(self):
+		with nogil:
+			self._this.run()
+		return self
+
+	def getIntraClustering(self, node u):
+		return self._this.getIntraClustering(u)
+
+	def getPermanence(self, node u):
+		return self._this.getPermanence(u)
 
 cdef extern from "cpp/centrality/LocalPartitionCoverage.h":
 	cdef cppclass _LocalPartitionCoverage "NetworKit::LocalPartitionCoverage" (_Centrality):
@@ -5643,6 +5759,7 @@ cdef class LocalPartitionCoverage(Centrality):
 		self._G = G
 		self._P = P
 		self._this = new _LocalPartitionCoverage(G._this, P._this)
+
 
 # Module: dynamic
 

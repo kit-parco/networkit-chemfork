@@ -12,6 +12,7 @@ from networkit import distance, coarsening, matching, nxadapter, graphio
 import math
 import logging
 import subprocess
+import os
 
 class StarGraphGenerator:
 	"""
@@ -144,7 +145,7 @@ class MultiscaleGenerator:
 		for v in Gf.nodes():
 			(v1, v2) = Gf.addNode(), Gf.addNode()
 			Gf.addEdge(v1, v2)
-		
+
 
 
 	def _buildFineSequence(self):
@@ -169,24 +170,83 @@ class MultiscaleGenerator:
 
 class BTERReplicator:
 
-	scriptname = '../scripts/bter_wrapper.m'
 	matlabname = 'matlab'
-	tempFileOut = '../scripts/bter_output'
-	tempFileIn = 'bter_input.mat'
+	matlabScript = """
+	addpath('{0}')
+	filename = 'bter_input.mat'
+	load(filename)
+	addpath('{1}')
+	[ccd,gcc] = ccperdeg(G);
+	nd = accumarray(nonzeros(sum(G,2)),1);
+	nd = repmat(nd, {2}, 1);
+	ccd = repmat(ccd, {2}, 1);
+	[E1,E2] = bter(nd,ccd);
+	G_bter = bter_edges2graph(E1,E2);
+	save('bter_output', 'G_bter')
+	exit
+	"""
+	feastpackPath = "."
+	workingDir = "."
 
 
-	def __init__(self, G):
+	@classmethod
+	def setPaths(cls, feastpackPath, workingDir="/tmp"):
+		cls.feastpackPath = feastpackPath
+		cls.workingDir = workingDir
+
+	def __init__(self, G, scale=1):
 		self.G = G
+		self.scriptPath = os.path.join(self.workingDir, "bter_wrapper.m")
+		# write MATLAB script
+		with open(self.scriptPath, 'w') as matlabScriptFile:
+			matlabScriptFile.write(self.matlabScript.format(self.workingDir, self.feastpackPath, scale))
+		self.tempFileOut = os.path.join(self.workingDir, 'bter_output')
+		self.tempFileIn = os.path.join(self.workingDir, 'bter_input.mat')
 
 	def generate(self):
 		graphio.writeMat(self.G, self.tempFileIn)
-		subprocess.call([self.matlabname, '-nosplash', '-nodisplay', '-r "run(\''+self.scriptname+'\');"'])
+		subprocess.call([self.matlabname, '-nosplash', '-nodisplay', '-r "run(\''+self.scriptPath+'\');"'])
 		G_bter = graphio.readMat(self.tempFileOut, key='G_bter')
 		subprocess.call(['rm', self.tempFileOut])
 		subprocess.call(['rm', self.tempFileIn])
-		return G
+		return G_bter
 
 	@classmethod
-	def fit(cls, G):
-		return cls(G)
+	def fit(cls, G, scale=1):
+		return cls(G, scale)
 
+class MUSKETEERAdapter:
+
+	def __init__(self, O, **params):
+		self.O = nxadapter.nk2nx(O)
+		defaultParams = {'node_edit_rate': [0, 0.05, 0.05, 0.05], 'edge_edit_rate': [0, 0.05, 0.05, 0.05]}
+		self.params = defaultParams.copy()
+		self.params.update(params)
+
+
+	def generate(self):
+		import sys
+		currentDir = os.getcwd()
+		os.chdir(self.musketeerPath)
+		if sys.version_info >= (3,5):
+			import importlib.util
+			spec = importlib.util.spec_from_file_location("algorithms", os.path.join(self.musketeerPath, "algorithms.py"))
+			musketeerModule = importlib.util.module_from_spec(spec)
+			spec.loader.exec_module(musketeerModule)
+		else:
+			from importlib.machinery import SourceFileLoader
+			musketeerModule = SourceFileLoader("algorithms", os.path.join(self.musketeerPath, "algorithms.py")).load_module()
+		os.chdir(currentDir)
+		R = musketeerModule.generate_graph(self.O, self.params)
+		return nxadapter.nx2nk(R)
+
+	@classmethod
+	def setPaths(cls, musketeerPath):
+		cls.musketeerPath = musketeerPath
+
+	@classmethod
+	def fit(cls, G, scale=1):
+		params = {}
+		if scale > 1:
+			params = {"node_growth_rate": [0, 0.0, 0.0, scale]}
+		return cls(G, **params)

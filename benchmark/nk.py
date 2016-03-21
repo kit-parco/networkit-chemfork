@@ -12,9 +12,9 @@ class Algo(base.Algo):
 
 	framework = framework
 
-	def loadGraph(self, path):
+	def loadGraph(self, path, graphFormat=networkit.Format.GML):
 		with Timer() as t:
-			G = networkit.readGraph(path, networkit.Format.GML)
+			G = networkit.readGraph(path, graphFormat)
 		debug("reading {path} took {t.elapsed} s".format(**locals()))
 		return G
 
@@ -22,7 +22,7 @@ class bConnectedComponents(Algo):
 	name = "ConnectedComponents"
 
 	def run(self, G):
-		cc = networkit.properties.ConnectedComponents(G)
+		cc = networkit.components.ConnectedComponents(G)
 		cc.run()
 		return cc.numberOfComponents()
 
@@ -75,7 +75,7 @@ class bDiameter(Algo):
 	name = "Diameter"
 
 	def run(self, G):
-		return networkit.properties.Diameter.exactDiameter(G)
+		return networkit.distance.Diameter(G).run()
 
 
 class bDiameterEstimate(Algo):
