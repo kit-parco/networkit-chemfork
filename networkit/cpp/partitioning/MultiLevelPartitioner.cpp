@@ -13,6 +13,8 @@
 #include "../auxiliary/PrioQueue.h"
 #include "../auxiliary/Random.h"
 
+#include "../components/ParallelConnectedComponents.h"
+
 #include "../graph/GraphDistance.h"
 #include "../community/ClusteringGenerator.h"
 
@@ -30,6 +32,14 @@ MultiLevelPartitioner::MultiLevelPartitioner(const Graph& G, count numParts, dou
 	for (index i : chargedVertices) {
 		if (!G.hasNode(i)) throw std::runtime_error("At least one of the charged nodes is missing from the graph.");
 	}
+
+	vector<index> chargedVerticesCopy = chargedVertices;
+	std::sort(chargedVerticesCopy.begin(), chargedVerticesCopy.end());
+	auto it = std::unique(chargedVerticesCopy.begin(), chargedVerticesCopy.end());
+	if (it != chargedVerticesCopy.end()) {
+		throw std::runtime_error("Charged vertices are not unique.");
+	}
+
 	count n = G.numberOfNodes();
 	if (previous.numberOfElements() == 0) {
 		previousPartition = Partition(n);
@@ -40,6 +50,12 @@ MultiLevelPartitioner::MultiLevelPartitioner(const Graph& G, count numParts, dou
 			throw std::runtime_error("Previous partition given, but of wrong size.");
 		}
 		previousPartition = previous;
+	}
+
+	ParallelConnectedComponents comp(G);
+	comp.run();
+	if (comp.numberOfComponents() > 1) {
+		throw std::runtime_error("Graph is unconnected.");
 	}
 }
 
@@ -72,8 +88,32 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 
 	DEBUG("Partitioning graph with ", n, " nodes, ", m, " edges and total edge weight ",  G.totalEdgeWeight() , " into ", numParts, " parts.");
 
-	// coarsen recursively until graph is small enough
-	if (n <= 2 * numParts) {
+	bool coarsestLevelReached = n <= 2 * numParts;
+
+	//get cut edges
+	std::vector<std::pair<node, node> > forbiddenEdges;
+
+	if (!coarsestLevelReached) {
+		G.forEdges([&](node u, node v, edgeweight w) {
+			if (previous[u] != previous[v]) {
+				forbiddenEdges.push_back(std::make_pair(u,v));
+			}
+		});
+		if (forbiddenEdges.size() == G.numberOfEdges()) {
+			//no more edge to contract, use initial partitioning step
+			coarsestLevelReached = true;
+		}
+	}
+
+	if (!coarsestLevelReached) {
+		LocalMaxMatcher matcher(G, chargedVertices, forbiddenEdges, nodeWeights, true);
+		matcher.run();
+		if (matcher.getMatching().size(G) == 0) {
+			coarsestLevelReached = true;
+		}
+	}
+
+	if (coarsestLevelReached) {
 	   Partition initial;
 	   if (bisectRecursively) {
 		   initial = recursiveBisection(G, numParts);
@@ -108,16 +148,6 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 	   return initial;
 	}
 	else {
-
-		//get cut edges
-		std::vector<std::pair<node, node> > forbiddenEdges;
-		G.forEdges([&](node u, node v, edgeweight w) {
-			if (previous[u] != previous[v]) {
-				forbiddenEdges.push_back(std::make_pair(u,v));
-			}
-		});
-		assert(forbiddenEdges.size() < G.numberOfEdges());
-
 		// recursive coarsening
 	   LocalMaxMatcher matcher(G, chargedVertices, forbiddenEdges, nodeWeights, true);
 	   matcher.run();
@@ -126,6 +156,7 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 	   MatchingContracter coarsener(G, matching);
 	   coarsener.run();
 	   Graph coarseG = coarsener.getCoarseGraph();
+	   assert(coarseG.numberOfNodes() < G.numberOfNodes());
 	   std::vector<node> fineToCoarse = coarsener.getFineToCoarseNodeMapping();
 
 	   Partition coarsePrevious(coarseG.numberOfNodes());
