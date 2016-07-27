@@ -49,13 +49,16 @@ MultiLevelPartitioner::MultiLevelPartitioner(const Graph& G, count numParts, dou
 		if (previous.numberOfElements() != n) {
 			throw std::runtime_error("Previous partition given, but of wrong size.");
 		}
+		if (previous.numberOfSubsets() > numParts) {
+			throw std::runtime_error("Previous partition given, but with too many blocks.");
+		}
 		previousPartition = previous;
 	}
 
 	ParallelConnectedComponents comp(G);
 	comp.run();
 	if (comp.numberOfComponents() > 1) {
-		throw std::runtime_error("Graph is unconnected.");
+		throw std::runtime_error("Graph is unconnected..");
 	}
 }
 
@@ -84,6 +87,7 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 	const count n = G.numberOfNodes();
 	const count m = G.numberOfEdges();
 	assert(previous.numberOfElements() == n);
+	assert(previous.numberOfSubsets() <= numParts);
 	assert(nodeWeights.size() == n);
 
 	DEBUG("Partitioning graph with ", n, " nodes, ", m, " edges and total edge weight ",  G.totalEdgeWeight() , " into ", numParts, " parts.");
@@ -117,6 +121,7 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 	   Partition initial;
 	   if (bisectRecursively) {
 		   initial = recursiveBisection(G, numParts);
+		   assert(initial.numberOfSubsets() == numParts);
 	   } else {
 		   vector<index> startingPoints(chargedVertices);
 
@@ -128,23 +133,27 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 			   startingPoints.push_back(farthestNode);
 			}
 		   initial = growRegions(G, startingPoints);//TODO: adapt region growing to accept node weights
+		   assert(initial.numberOfSubsets() == numParts);
 	   }
 
 	   ClusteringGenerator gen;
 	   Partition naiveInitial = gen.makeContinuousBalancedClustering(G, numParts);
 
-	   if (chargesValid(naiveInitial, chargedVertices) && naiveInitial.calculateCutWeight(G) < initial.calculateCutWeight(G) && getWeightedImbalance(initial, nodeWeights, numParts) <= maxImbalance) {
+	   if (chargesValid(naiveInitial, chargedVertices) && naiveInitial.calculateCutWeight(G) < initial.calculateCutWeight(G)
+			   && getWeightedImbalance(initial, nodeWeights, numParts) <= maxImbalance && naiveInitial.numberOfSubsets() == numParts) {
 		   initial = naiveInitial;
 		   DEBUG("Replaced initial partition with naive solution, since it was better.");
 	   }
 
-	   bool previousValid = previous.numberOfElements() == n && getWeightedImbalance(previous, nodeWeights, numParts) <= maxImbalance && chargesValid(previous, chargedVertices);
+	   bool previousValid = previous.numberOfElements() == n && getWeightedImbalance(previous, nodeWeights, numParts) <= maxImbalance && chargesValid(previous, chargedVertices)
+	   	   && previous.numberOfSubsets() == numParts;
 	   if (previousValid && previous.calculateCutWeight(G) < initial.calculateCutWeight(G)) {
 		   initial = previous;
 	   }
 
 	   count initialK = initial.numberOfSubsets();
-	   DEBUG("Initial solution has ", initialK, " partitions, a cut of ", initial.calculateCutWeight(G), " and an imbalance of ", initial.getImbalance(numParts));
+	   DEBUG("Initial solution has ", initialK, " blocks, a cut of ", initial.calculateCutWeight(G), " and an imbalance of ", initial.getImbalance(numParts));
+	   assert(initialK == numParts);
 	   return initial;
 	}
 	else {
@@ -214,6 +223,7 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 
 	   DEBUG("Refinement, n: ", G.numberOfNodes(), " k: ", preRefinementK, "->", finePart.numberOfSubsets(), ", cut: ", preRefinementCut, "->", postRefinementCut, ", imbalance:", preRefinementImbalance, "->", finePart.getImbalance(numParts));
 
+	   assert(finePart.numberOfSubsets() == numParts);
 	   return finePart;
 	}
 }
@@ -311,10 +321,11 @@ edgeweight MultiLevelPartitioner::fiducciaMattheysesStep(const Graph& g, Partiti
 	/**
 	 * fill priority queues. Since we want to access the nodes with the maximum gain first but have only minQueues available, we use the negative gain as priority.
 	 */
-	g.forNodes([&queues, &part, &bestTargetPartition, &charged, &chargedPart, &chargedVertices, &edgeCuts, partZ, k, total](index v){
+	g.forNodes([&queues, &part, &bestTargetPartition, &charged, &chargedPart, &chargedVertices, &edgeCuts, &fragmentSizes, &nodeWeights, partZ, k, total](index v){
 		edgeweight maxCut = -total;
 		index idAtMax = partZ;
 		index ownFragment = part[v];
+
 		for (index fragment = 0; fragment < partZ; fragment++) {
 			if (fragment != ownFragment && edgeCuts[v][fragment] > maxCut && (!chargedPart[fragment] || !charged[v])) {//I could check the balance constraint even here. Should I?
 				idAtMax = fragment;
@@ -328,7 +339,9 @@ edgeweight MultiLevelPartitioner::fiducciaMattheysesStep(const Graph& g, Partiti
 			 */
 			bestTargetPartition[v] = idAtMax;
 			assert(ownFragment < queues.size());
-			queues[ownFragment].insert(-(maxCut-edgeCuts[v][ownFragment]), v); //negative max gain
+			if (fragmentSizes[ownFragment] > nodeWeights[v]) {
+				queues[ownFragment].insert(-(maxCut-edgeCuts[v][ownFragment]), v); //negative max gain
+			}
 		} else {
 			assert(chargedVertices.size() == k);
 		}
@@ -338,7 +351,7 @@ edgeweight MultiLevelPartitioner::fiducciaMattheysesStep(const Graph& g, Partiti
 	for (index i = 0; i < queues.size(); i++) {
 		queuedSum += queues[i].size();
 	}
-	assert(chargedVertices.size() == k || queuedSum == n);
+	//assert(chargedVertices.size() == k || queuedSum == n);
 
 	/**
 	 * iterate over all vertices and move them, as long as unmoved vertices are left
@@ -378,6 +391,7 @@ edgeweight MultiLevelPartitioner::fiducciaMattheysesStep(const Graph& g, Partiti
 			index targetFragment = bestTargetPartition[topVertex];
 			double storedGain = edgeCuts[topVertex][targetFragment] - edgeCuts[topVertex][partID];
 			assert(abs(storedGain - topGain) < 0.0001);
+			assert(fragmentSizes[partID] > nodeWeights[topVertex]);
 			//double checkedGain = calculateGain(g, part, topVertex, targetFragment);
 			//assert(abs(checkedGain - topGain) < 0.00001);
 
@@ -415,7 +429,7 @@ edgeweight MultiLevelPartitioner::fiducciaMattheysesStep(const Graph& g, Partiti
 			}
 
 			//update edge cuts of neighbours
-			g.forNeighborsOf(topVertex, [&g, topVertex, partID, total, targetFragment, &queues, &part, &subsetIds, &moved, &bestTargetPartition, &charged, &chargedPart, &edgeCuts, partZ](index w){
+			g.forNodes([&g, topVertex, partID, total, targetFragment, &queues, &part, &subsetIds, &moved, &bestTargetPartition, &charged, &chargedPart, &edgeCuts, &fragmentSizes, &nodeWeights, partZ](index w){
 				if (!moved[w]) {
 					//update gain
 					edgeCuts[w][partID] -= g.weight(topVertex, w);
@@ -436,7 +450,7 @@ edgeweight MultiLevelPartitioner::fiducciaMattheysesStep(const Graph& g, Partiti
 
 					//update prioqueue
 					queues[part[w]].remove(w);
-					if (idAtMax < partZ) {
+					if (idAtMax < partZ && fragmentSizes[ownFragment] > nodeWeights[w]) {
 						queues[part[w]].insert(-(maxCut-edgeCuts[w][ownFragment]), w);
 					}
 				}
@@ -804,7 +818,7 @@ void MultiLevelPartitioner::enforceBalance(const Graph& g, Partition& part, doub
 	 * Thus, we stick to the known definition for uniform weights and add a safety buffer otherwise.
 	 */
 	const double optSize = largestNodeWeight <= 1 ? ceil(double(n) / k) : double(sumNodeWeights) / k + largestNodeWeight;
-	const double maxAllowablePartSize = optSize*(1+maxImbalance);
+	//const double maxAllowablePartSize = optSize*(1+maxImbalance);
 
 	/**
 	 * mark which partitions are charged already
