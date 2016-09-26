@@ -118,10 +118,12 @@ def readGraph(path, fileformat, **kwargs):
 	    Parameters:
 		- fileformat: An element of the Format enumeration. Currently supported file types:
 		SNAP, EdgeListSpaceZero, EdgeListSpaceOne, EdgeListTabZero, EdgeListTabOne, METIS,
-		GraphML, GEXF, GML, EdgeListCommaOne, GraphViz, DOT, EdgeList, LFR, KONEC, GraphToolBinary
-		- **kwargs: in case of a custom edge list, provide the defining paramaters as follows:
-			"separator=CHAR, firstNode=NODE, commentPrefix=STRING, continuous=BOOL"
-			commentPrefix and continuous are optional
+		GraphML, GEXF, GML, EdgeListCommaOne, GraphViz, DOT, EdgeList, LFR, KONECT, GraphToolBinary
+		- **kwargs: in case of a custom edge list, pass the genereic Fromat.EdgeList accompanied by
+			the defining paramaters as follows:
+			"separator=CHAR, firstNode=NODE, commentPrefix=STRING, continuous=BOOL, directed=BOOL"
+			commentPrefix='#', continuous=True and directed=False are optional because of their default values;
+			firstNode is not needed when continuous=True.
 	"""
 	reader = getReader(fileformat,**kwargs)
 
@@ -141,7 +143,7 @@ def readGraph(path, fileformat, **kwargs):
 				raise IOError("{0} is not a valid {1} file: {2}".format(path,fileformat,e))
 	return None
 
-def readGraphs(dirPath, pattern, fileformat, some=None, **kwargs):
+def readGraphs(dirPath, pattern, fileformat, some=None, exclude=None, **kwargs):
 	"""
 	Read all graph files contained in a directory whose filename contains the pattern, return a dictionary of name to Graph object.
     Parameters:
@@ -156,11 +158,12 @@ def readGraphs(dirPath, pattern, fileformat, some=None, **kwargs):
 	for root, dirs, files in os.walk(dirPath):
 		for file in files:
 			if fnmatch.fnmatch(file, pattern):
-				G = readGraph(os.path.join(root, file), fileformat, **kwargs)
-				graphs[G.getName()] = G
-				if some:
-					if len(graphs) == some:
-						return graphs
+				if (exclude is None) or (not fnmatch.fnmatch(file, exclude)):
+					G = readGraph(os.path.join(root, file), fileformat, **kwargs)
+					graphs[G.getName()] = G
+					if some:
+						if len(graphs) == some:
+							return graphs
 	return graphs
 
 
@@ -201,15 +204,15 @@ class MatWriter:
 		writeMat(path, key)
 
 def writeMat(G, path, key="G"):
-	""" Writes a NetworKit::Graph to a Matlab object file. 
+	""" Writes a NetworKit::Graph to a Matlab object file.
 		Parameters:
 		- G: The graph
 		- path: Path of the matlab file
-		- key: Dictionary Key  
+		- key: Dictionary Key
 	"""
 	matrix = algebraic.adjacencyMatrix(G, matrixType='sparse')
 	scipy.io.savemat(path, {key : matrix})
-	
+
 
 # writing
 def getWriter(fileformat, **kwargs):
@@ -309,11 +312,3 @@ def writeStream(stream, path):
 		Write a graph event stream to a file.
 	"""
 	DGSWriter().write(stream, path)
-
-
-def graphFromStreamFile(path, mapped=True, baseIndex=0):
-	stream = readStream(path, mapped, baseIndex)
-	G = __Graph()
-	gu = GraphUpdater(G)
-	gu.update(stream)
-	return G

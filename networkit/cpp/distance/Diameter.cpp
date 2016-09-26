@@ -60,18 +60,17 @@ edgeweight Diameter::exactDiameter(const Graph& G) {
 	if (! G.isWeighted()) {
 		std::tie(diameter, std::ignore) = estimatedDiameterRange(G, 0);
 	} else {
-		 G.forNodes([&](node v) {
+		G.forNodes([&](node v) {
 			handler.assureRunning();
-		 	Dijkstra dijkstra(G, v);
-		 	dijkstra.run();
-		 	auto distances = dijkstra.getDistances();
-		 	for (auto distance : distances) {
-		 		if (diameter < distance) {
-		 			diameter = distance;
-		 		}
-		 	}
-			//DEBUG("ecc(", v, "): ", *std::max_element(distances.begin(), distances.end()), " of ", distances);
-		 });
+			Dijkstra dijkstra(G, v);
+			dijkstra.run();
+			auto distances = dijkstra.getDistances();
+			G.forNodes([&](node u) {
+				if (diameter < distances[u]) {
+					diameter = distances[u];
+				}
+			});
+		});
 	}
 
 	if (diameter == std::numeric_limits<edgeweight>::max()) {

@@ -24,16 +24,21 @@ import networkit
 
 from util import *
 import nk
-#import nx
-import ig
-import gt
+
+try:
+	import networkx
+	import nx
+except ImportError as ex:
+	print("networkx not available")
 
 try:
 	import igraph
+	import ig
 except ImportError as ex:
 	print("igraph not available")
 try:
 	import graph_tool
+	import gt
 except ImportError as ex:
 	print("graph_tool not available")
 
@@ -48,12 +53,12 @@ def averageRuns(df, groupby=["graph"]):
 	return df
 
 
-def graphMeta(graphNames, graphDir):
+def graphMeta(graphNames, graphDir, fileEnding=".gml.graph", graphFormat=networkit.Format.GML):
 	meta = []
 	for name in graphNames:
 		info("loading {name}".format(**locals()))
-		G = networkit.readGraph(os.path.join(graphDir, "{0}.gml.graph".format(name)), networkit.Format.GML)
-		(n, m) = networkit.properties.size(G)
+		G = networkit.readGraph(os.path.join(graphDir, "{0}{1}".format(name, fileEnding)), graphFormat)
+		(n, m) = G.size()
 		meta.append({"name" : name, "n" : n, "m" : m})
 	info("done")
 	return pandas.DataFrame(meta, columns=["name", "n", "m"])
@@ -158,8 +163,9 @@ class Bench:
 
 	"""
 
-	def __init__(self, graphDir, defaultGraphs, outDir, save=True, nRuns=5, cacheGraphs=False, timeout=None, fileEnding="gml.graph", graphFormat=networkit.Format.GML):
+	def __init__(self, graphDir, defaultGraphs, outDir, save=True, nRuns=5, cacheGraphs=False, timeout=None, fileEnding="gml.graph", graphFormat=networkit.Format.GML, indexEdges=False):
 		self.graphFormat = graphFormat
+		self.indexEdges = indexEdges
 		self.fileEnding = fileEnding
 		self.defaultGraphs = defaultGraphs
 		self.nRuns = nRuns  # default number of runs for each algo
@@ -199,6 +205,8 @@ class Bench:
 			self.info("loading {0} from {1}".format(graphName, graphPath))
 			with Timer() as t:
 				G = algo.loadGraph(graphPath, self.graphFormat)
+				if self.indexEdges:
+					G.indexEdges()
 			self.info("\t took {1} s".format(graphName, t.elapsed))
 			eps = self.getSize(G)[1] / t.elapsed
 			self.loadTimes.append({"framework" : algo.framework, "graph" : graphName, "time": t.elapsed, "edges/s": eps})

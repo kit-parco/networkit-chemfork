@@ -5,6 +5,7 @@
 # needed for collections.Iterable
 import collections
 import math
+import os
 
 
 try:
@@ -248,6 +249,7 @@ cdef extern from "cpp/graph/Graph.h":
 		count degree(node u) except +
 		count degreeIn(node u) except +
 		count degreeOut(node u) except +
+		double weightedDegree(node u) except +
 		bool isIsolated(node u) except +
 		_Graph copyNodes() except +
 		node addNode() except +
@@ -258,6 +260,7 @@ cdef extern from "cpp/graph/Graph.h":
 		void merge(_Graph) except +
 		void addEdge(node u, node v, edgeweight w) except +
 		void setWeight(node u, node v, edgeweight w) except +
+		void increaseWeight(node u, node v, edgeweight w) except +
 		void removeEdge(node u, node v) except +
 		void removeSelfLoops() except +
 		void swapEdge(node s1, node t1, node s2, node t2) except +
@@ -288,6 +291,7 @@ cdef extern from "cpp/graph/Graph.h":
 		void initCoordinates() except +
 		count numberOfSelfLoops() except +
 		_Graph toUndirected() except +
+		_Graph toUnweighted() except +
 		_Graph transpose() except +
 		void BFSfromNode "BFSfrom"[Callback] (node r, Callback c) except +
 		void BFSfrom[Callback](vector[node] startNodes, Callback c) except +
@@ -295,6 +299,7 @@ cdef extern from "cpp/graph/Graph.h":
 		void DFSfrom[Callback](node r, Callback c) except +
 		void DFSEdgesFrom[Callback](node r, Callback c) except +
 		bool checkConsistency() except +
+		_Graph subgraphFromNodes(unordered_set[node] nodes)  except +
 
 cdef cppclass EdgeCallBackWrapper:
 	void* callback
@@ -533,6 +538,24 @@ cdef class Graph:
 	def degreeOut(self, u):
 		return self._this.degreeOut(u)
 
+	def weightedDegree(self, v):
+		"""
+		Returns the weighted degree of v.
+
+		For directed graphs this is the sum of weights of all outgoing edges of v.
+
+		Parameters
+		----------
+		v : node
+			Node.
+
+		Returns
+		-------
+		double
+			The weighted degree of v.
+		"""
+		return self._this.weightedDegree(v)
+
 	def isIsolated(self, u):
 		"""
 		If the node `u` is isolated
@@ -598,6 +621,7 @@ cdef class Graph:
 		G : Graph
 		"""
 		self._this.append(G._this)
+		return self
 
 	def merge(self, Graph G):
 		""" Modifies this graph to be the union of it and another graph.
@@ -608,6 +632,7 @@ cdef class Graph:
 		G : Graph
 		"""
 		self._this.merge(G._this)
+		return self
 
 	def addEdge(self, u, v, w=1.0):
 		""" Insert an undirected edge between the nodes `u` and `v`. If the graph is weighted you can optionally
@@ -623,6 +648,7 @@ cdef class Graph:
 			Edge weight.
 		"""
 		self._this.addEdge(u, v, w)
+		return self
 
 	def setWeight(self, u, v, w):
 		""" Set the weight of an edge. If the edge does not exist, it will be inserted.
@@ -637,6 +663,22 @@ cdef class Graph:
 			Edge weight.
 		"""
 		self._this.setWeight(u, v, w)
+		return self
+
+	def increaseWeight(self, u, v, w):
+		""" Increase the weight of an edge. If the edge does not exist, it will be inserted.
+
+		Parameters
+		----------
+		u : node
+			Endpoint of edge.
+		v : node
+			Endpoint of edge.
+		w : edgeweight
+			Edge weight.
+		"""
+		self._this.increaseWeight(u, v, w)
+		return self
 
 	def removeEdge(self, u, v):
 		""" Removes the undirected edge {`u`,`v`}.
@@ -649,6 +691,7 @@ cdef class Graph:
 			Endpoint of edge.
 		"""
 		self._this.removeEdge(u, v)
+		return self
 
 	def removeSelfLoops(self):
 		""" Removes all self-loops from the graph.
@@ -673,6 +716,7 @@ cdef class Graph:
 			Target node of the second edge
 		"""
 		self._this.swapEdge(s1, t1, s2, t2)
+		return self
 
 	def compactEdges(self):
 		"""
@@ -859,6 +903,17 @@ cdef class Graph:
 			undirected graph.
 		"""
 		return Graph().setThis(self._this.toUndirected())
+
+
+	def toUnweighted(self):
+		"""
+		Return an unweighted version of this graph.
+
+	 	Returns
+	 	-------
+			graph.
+		"""
+		return Graph().setThis(self._this.toUnweighted())
 
 	def transpose(self):
 		"""
@@ -1089,6 +1144,30 @@ cdef class Graph:
 		"""
 		return self._this.checkConsistency()
 
+
+	def subgraphFromNodes(self, nodes):
+		""" Create a subgraph induced by the set `nodes`.
+
+		Parameters
+		----------
+		nodes : list
+			A subset of nodes of `G` which induce the subgraph.
+
+		Returns
+		-------
+		Graph
+			The subgraph induced by `nodes`.
+
+		Notes
+		-----
+		The returned graph G' is isomorphic (structurally identical) to the subgraph in G,
+		but node indices are not preserved.
+		"""
+		cdef unordered_set[node] nnodes
+		for node in nodes:
+			nnodes.insert(node);
+		return Graph().setThis(self._this.subgraphFromNodes(nnodes))
+
 # TODO: expose all methods
 
 cdef extern from "cpp/graph/SSSP.h":
@@ -1149,8 +1228,11 @@ cdef class SSSP(Algorithm):
 		return (<_SSSP*>(self._this)).getPath(t, forward)
 
 	def getPaths(self, t, forward=True):
-		# FIXME: automatic conversion of set[vector[node]] to set of lists doesn't work
-		return (<_SSSP*>(self._this)).getPaths(t, forward)
+		cdef set[vector[node]] paths = (<_SSSP*>(self._this)).getPaths(t, forward)
+		result = []
+		for elem in paths:
+			result.append(list(elem))
+		return result
 
 	def getStack(self, moveOut=True):
 		return (<_SSSP*>(self._this)).getStack(moveOut)
@@ -1353,36 +1435,6 @@ cdef class APSP(Algorithm):
 		"""
 		return (<_APSP*>(self._this)).getDistance(u, v)
 
-cdef extern from "cpp/graph/Subgraph.h" namespace "NetworKit::Subgraph":
-		_Graph _SubGraphFromNodes "NetworKit::Subgraph::fromNodes"(_Graph G, unordered_set[node] nodes)  except +
-
-cdef class Subgraph:
-	""" Methods for creating subgraphs """
-
-	def fromNodes(self, Graph G, nodes): #unordered_set[node]
-		""" Create a subgraph induced by the set `nodes`.
-
-	 	Parameters
-	 	----------
-	 	G : Graph
-	 		The graph.
- 		nodes : list
- 			A subset of nodes of `G` which induce the subgraph.
-
-		Returns
-		-------
-		Graph
-			The subgraph induced by `nodes`.
-
-		Notes
-		-----
-		The returned graph G' is isomorphic (structurally identical) to the subgraph in G,
-	 	but node indices are not preserved.
-		"""
-		cdef unordered_set[node] nnodes
-		for node in nodes:
-			nnodes.insert(node);
-		return Graph().setThis(_SubGraphFromNodes(G._this, nnodes))
 
 
 cdef extern from "cpp/graph/SpanningForest.h":
@@ -1762,9 +1814,9 @@ cdef class ErdosRenyiGenerator:
 		""" Fit model to input graph"""
 		(n, m) = G.size()
 		if G.isDirected():
-			p = p = m / (n * (n-1))
+			raise Exception("TODO: figure out scaling scheme for directed graphs")
 		else:
-			p = m / ((n * (n-1)) / 2)
+			p = (2 * m) / (scale * n * (n-1))
 		return cls(scale * n, p)
 
 cdef extern from "cpp/generators/DorogovtsevMendesGenerator.h":
@@ -2110,19 +2162,19 @@ cdef class EdgeSwitchingMarkovChainGenerator:
 cdef extern from "cpp/generators/HyperbolicGenerator.h":
 	cdef cppclass _HyperbolicGenerator "NetworKit::HyperbolicGenerator":
 		# TODO: revert to count when cython issue fixed
-		_HyperbolicGenerator(unsigned int nodes,  double k, double gamma) except +
+		_HyperbolicGenerator(unsigned int nodes,  double k, double gamma, double T) except +
 		void setLeafCapacity(unsigned int capacity) except +
 		void setTheoreticalSplit(bool split) except +
 		void setBalance(double balance) except +
 		vector[double] getElapsedMilliseconds() except +
 		_Graph generate() except +
-		_Graph generateExternal(vector[double] angles, vector[double] radii, double r, double thresholdDistance) except +
+		_Graph generate(vector[double] angles, vector[double] radii, double R, double T) except +
 
 cdef class HyperbolicGenerator:
 	""" The Hyperbolic Generator distributes points in hyperbolic space and adds edges between points with a probability depending on their distance. The resulting graphs have a power-law degree distribution, small diameter and high clustering coefficient.
 For a temperature of 0, the model resembles a unit-disk model in hyperbolic space.
 
- 		HyperbolicGenerator(n, k=6, gamma=3)
+ 		HyperbolicGenerator(n, k=6, gamma=3, T=0)
 
  		Parameters
 		----------
@@ -2132,15 +2184,17 @@ For a temperature of 0, the model resembles a unit-disk model in hyperbolic spac
 			average degree
 		gamma : double
 			exponent of power-law degree distribution
+		T : double
+			temperature of statistical model
 
 	"""
 
 	cdef _HyperbolicGenerator* _this
 
-	def __cinit__(self,  n, k=6, gamma=3):
+	def __cinit__(self,  n, k=6, gamma=3, T=0):
 		if gamma <= 2:
 				raise ValueError("Exponent of power-law degree distribution must be > 2")
-		self._this = new _HyperbolicGenerator(n, k, gamma)
+		self._this = new _HyperbolicGenerator(n, k, gamma, T)
 
 	def setLeafCapacity(self, capacity):
 		self._this.setLeafCapacity(capacity)
@@ -2155,7 +2209,7 @@ For a temperature of 0, the model resembles a unit-disk model in hyperbolic spac
 		return self._this.getElapsedMilliseconds()
 
 	def generate(self):
-		""" Generates hyperbolic unit disk graph
+		""" Generates hyperbolic random graph
 
 		Returns
 		-------
@@ -2164,17 +2218,15 @@ For a temperature of 0, the model resembles a unit-disk model in hyperbolic spac
 		"""
 		return Graph(0).setThis(self._this.generate())
 
-	def generateExternal(self, angles, radii, k, gamma):
+	def generate(self, angles, radii, R, T=0):
 		# TODO: documentation
-		return Graph(0).setThis(self._this.generateExternal(angles, radii, k, gamma))
+		return Graph(0).setThis(self._this.generate(angles, radii, R, T))
 
 	@classmethod
 	def fit(cls, Graph G, scale=1):
 		""" Fit model to input graph"""
-		import powerlaw
 		degSeq = DegreeCentrality(G).run().scores()
-		fit = powerlaw.Fit(degSeq)
-		gamma = fit.alpha
+		gamma = max(-1 * PowerlawDegreeSequence(degSeq).getGamma(), 2.1)
 		(n, m) = G.size()
 		k = 2 * (m / n)
 		return cls(n * scale, k, gamma)
@@ -2182,7 +2234,7 @@ For a temperature of 0, the model resembles a unit-disk model in hyperbolic spac
 
 cdef extern from "cpp/generators/RmatGenerator.h":
 	cdef cppclass _RmatGenerator "NetworKit::RmatGenerator":
-		_RmatGenerator(count scale, count edgeFactor, double a, double b, double c, double d, bool weighted) except +
+		_RmatGenerator(count scale, count edgeFactor, double a, double b, double c, double d, bool weighted, count reduceNodes) except +
 		_Graph generate() except +
 
 cdef class RmatGenerator:
@@ -2216,8 +2268,8 @@ cdef class RmatGenerator:
 	cdef _RmatGenerator* _this
 	paths = {"workingDir" : None, "kronfitPath" : None}
 
-	def __cinit__(self, count scale, count edgeFactor, double a, double b, double c, double d, bool weighted=False):
-		self._this = new _RmatGenerator(scale, edgeFactor, a, b, c, d, weighted)
+	def __cinit__(self, count scale, count edgeFactor, double a, double b, double c, double d, bool weighted=False, count reduceNodes=0):
+		self._this = new _RmatGenerator(scale, edgeFactor, a, b, c, d, weighted, reduceNodes)
 
 	def __dealloc__(self):
 		del self._this
@@ -2238,53 +2290,58 @@ cdef class RmatGenerator:
 		cls.paths["workingDir"] = workingDir
 
 	@classmethod
-	def fit(cls, G, scale=1, kronfit=True, iterations=5):
+	def fit(cls, G, scale=1, initiator=None, kronfit=True, iterations=50):
 		import math
 		import re
 		import subprocess
 		import os
 		import random
 		from networkit import graphio
-		if kronfit:
-			if cls.paths["workingDir"] is None:
-				raise RuntimeError("call setPaths class method first to configure")
-			# write graph
-			tmpGraphPath = os.path.join(cls.paths["workingDir"], "{0}.edgelist".format(G.getName()))
-			graphio.writeGraph(G, tmpGraphPath, graphio.Format.EdgeListTabOne)
-			# call kronfit
-			args = [cls.paths["kronfitPath"], "-i:{0}".format(tmpGraphPath), "-gi:{0}".format(str(iterations))]
-			subprocess.call(args)
-			# read estimated parameters
-			with open("KronFit-{0}.tab".format(G.getName())) as resultFile:
-				for i, line in enumerate(resultFile):
-					if i == 7:
-						matches = re.findall("\d+\.\d+", line)
-						weights = [float(s) for s in matches]
+		if initiator:
+			(a,b,c,d) = initiator
 		else:
-			# random weights because kronfit is slow
-			weights = (random.random(), random.random(), random.random(), random.random())
-		# normalize
-		s = sum(weights)
-		nweights = [w / s for w in weights]
-		(a,b,c,d) = nweights
+			if kronfit:
+				if cls.paths["workingDir"] is None:
+					raise RuntimeError("call setPaths class method first to configure")
+				# write graph
+				tmpGraphPath = os.path.join(cls.paths["workingDir"], "{0}.edgelist".format(G.getName()))
+				graphio.writeGraph(G, tmpGraphPath, graphio.Format.EdgeListTabOne)
+				# call kronfit
+				args = [cls.paths["kronfitPath"], "-i:{0}".format(tmpGraphPath), "-gi:{0}".format(str(iterations))]
+				subprocess.call(args)
+				# read estimated parameters
+				with open("KronFit-{0}.tab".format(G.getName())) as resultFile:
+					for i, line in enumerate(resultFile):
+						if i == 7:
+							matches = re.findall("\d+\.\d+", line)
+							weights = [float(s) for s in matches]
+			else:
+				# random weights because kronfit is slow
+				weights = (random.random(), random.random(), random.random(), random.random())
+			# normalize
+			nweights = [w / sum(weights) for w in weights]
+			(a,b,c,d) = nweights
+		print("using initiator matrix [{0},{1};{2},{3}]".format(a,b,c,d))
 		# other parameters
 		(n,m) = G.size()
-		s1 = math.floor(math.log(n, 2))
-		s2 = math.ceil(math.log(n, 2))
-		if abs(n - s1) > abs(n - s2):
-			scaleParam1 = s2
-		else:
-			scaleParam1 = s1
-		scaleParameter = scaleParam1 + math.floor(math.log(scale, 2))
+		scaleParameter = math.ceil(math.log(n * scale, 2))
 		edgeFactor = math.floor(m / n)
-		return RmatGenerator(scaleParameter, edgeFactor, a, b, c, d)
+		reduceNodes = (2**scaleParameter) - (scale * n)
+		print("random nodes to delete to achieve target node count: ", reduceNodes)
+		return RmatGenerator(scaleParameter, edgeFactor, a, b, c, d, False, reduceNodes)
 
 cdef extern from "cpp/generators/PowerlawDegreeSequence.h":
 	cdef cppclass _PowerlawDegreeSequence "NetworKit::PowerlawDegreeSequence":
 		_PowerlawDegreeSequence(count minDeg, count maxDeg, double gamma) except +
+		_PowerlawDegreeSequence(_Graph) except +
+		_PowerlawDegreeSequence(vector[double]) except +
 		void setMinimumFromAverageDegree(double avgDeg) nogil except +
+		void setGammaFromAverageDegree(double avgDeg, double minGamma, double maxGamma) nogil except +
 		double getExpectedAverageDegree() except +
 		count getMinimumDegree() const
+		count getMaximumDegree() const
+		double getGamma() const
+		double setGamma(double) const
 		void run() nogil except +
 		vector[count] getDegreeSequence(count numNodes) except +
 		count getDegree() except +
@@ -2293,19 +2350,27 @@ cdef class PowerlawDegreeSequence:
 	"""
 	Generates a powerlaw degree sequence with the given minimum and maximum degree, the powerlaw exponent gamma
 
+	If a list of degrees or a graph is given instead of a minimum degree, the class uses the minimum and maximum
+	value of the sequence and fits the exponent such that the expected average degree is the actual average degree.
+
 	Parameters
 	----------
-	minDeg : count
-		The minium degree
+	minDeg : count, list or Graph
+		The minium degree, or a list of degrees to fit or graphs
 	maxDeg : count
 		The maximum degree
 	gamma : double
-		The powerlaw exponent
+		The powerlaw exponent, default: -2
 	"""
 	cdef _PowerlawDegreeSequence *_this
 
-	def __cinit__(self, count minDeg, count maxDeg, double gamma):
-		self._this = new _PowerlawDegreeSequence(minDeg, maxDeg, gamma)
+	def __cinit__(self, minDeg, count maxDeg = 0, double gamma = -2):
+		if isinstance(minDeg, Graph):
+			self._this = new _PowerlawDegreeSequence((<Graph>minDeg)._this)
+		elif isinstance(minDeg, collections.Iterable):
+			self._this = new _PowerlawDegreeSequence(<vector[double]?>minDeg)
+		else:
+			self._this = new _PowerlawDegreeSequence((<count?>minDeg), maxDeg, gamma)
 
 	def __dealloc__(self):
 		del self._this
@@ -2321,6 +2386,23 @@ cdef class PowerlawDegreeSequence:
 		"""
 		with nogil:
 			self._this.setMinimumFromAverageDegree(avgDeg)
+		return self
+
+	def setGammaFromAverageDegree(self, double avgDeg, double minGamma = -1, double maxGamma = -6):
+		"""
+		Tries to set the powerlaw exponent gamma such that the specified average degree is expected.
+
+		Parameters
+		----------
+		avgDeg : double
+			The average degree that shall be approximated
+		minGamma : double
+			The minimum gamma to use, default: -1
+		maxGamma : double
+			The maximum gamma to use, default: -6
+		"""
+		with nogil:
+			self._this.setGammaFromAverageDegree(avgDeg, minGamma, maxGamma)
 		return self
 
 	def getExpectedAverageDegree(self):
@@ -2344,6 +2426,40 @@ cdef class PowerlawDegreeSequence:
 			The minimum degree
 		"""
 		return self._this.getMinimumDegree()
+
+	def setGamma(self, double gamma):
+		"""
+		Set the exponent gamma
+
+		Parameters
+		----------
+		gamma : double
+			The exponent to set
+		"""
+		self._this.setGamma(gamma)
+		return self
+
+	def getGamma(self):
+		"""
+		Get the exponent gamma.
+
+		Returns
+		-------
+		double
+			The exponent gamma
+		"""
+		return self._this.getGamma()
+
+	def getMaximumDegree(self):
+		"""
+		Get the maximum degree
+
+		Returns
+		-------
+		count
+			The maximum degree
+		"""
+		return self._this.getMaximumDegree()
 
 	def run(self):
 		"""
@@ -2415,6 +2531,9 @@ cdef class LFRGenerator(Algorithm):
 	n : count
 		The number of nodes
 	"""
+	params = {}
+	paths = {}
+
 	def __cinit__(self, count n):
 		self._this = new _LFRGenerator(n)
 
@@ -2535,7 +2654,7 @@ cdef class LFRGenerator(Algorithm):
 		"""
 		return Graph().setThis((<_LFRGenerator*>(self._this)).getGraph())
 
-	def generate(self):
+	def generate(self, useReferenceImplementation=False):
 		"""
 		Generates and returns the graph. Wrapper for the StaticGraphGenerator interface.
 
@@ -2544,6 +2663,10 @@ cdef class LFRGenerator(Algorithm):
 		Graph
 			The generated graph.
 		"""
+		if useReferenceImplementation:
+			from networkit import graphio
+			os.system("{0}/benchmark {1}".format(self.paths["refImplDir"], self.params["refImplParams"]))
+			return graphio.readGraph("network.dat", graphio.Format.EdgeListTabOne)
 		return Graph().setThis((<_LFRGenerator*>(self._this)).generate())
 
 	def getPartition(self):
@@ -2557,32 +2680,81 @@ cdef class LFRGenerator(Algorithm):
 		"""
 		return Partition().setThis((<_LFRGenerator*>(self._this)).getPartition())
 
+	@classmethod
+	def setPathToReferenceImplementationDir(cls, path):
+		cls.paths["refImplDir"] = path
+
 
 	@classmethod
-	def fit(cls, Graph G, scale=1):
+	def fit(cls, Graph G, scale=1, vanilla=False, communityDetectionAlgorithm=PLM, plfit=False):
 		""" Fit model to input graph"""
 		(n, m) = G.size()
 		# detect communities
-		communities = PLM(G).run().getPartition()
-		gen = cls(n * scale)
-		if scale > 1:
-			# scale communities
-			cData = communities.getVector()
-			cDataCopy = cData[:]
-			b = communities.upperBound()
-			for s in range(1, scale):
-				cDataExtend = [i + (b * s) for i in cDataCopy]
-				cData = cData + cDataExtend
-			assert (len(cData) == n * scale)
-			gen.setPartition(Partition(0, cData))
-		else:
-			gen.setPartition(communities)
-		# degree sequence
+		communities = communityDetectionAlgorithm(G).run().getPartition()
+		# get degree sequence
 		degSeq = DegreeCentrality(G).run().scores()
-		gen.setDegreeSequence(degSeq * scale)
-		# mixing parameter
-		localCoverage = LocalPartitionCoverage(G, communities).run().scores()
-		gen.setMu([1.0 - x for x in localCoverage] * scale)
+		# set number of nodes
+		gen = cls(n * scale)
+		if vanilla:
+			# fit power law to degree distribution and generate degree sequence accordingly
+			#print("fit power law to degree distribution and generate degree sequence accordingly")
+			avgDegree = int(sum(degSeq) / len(degSeq))
+			maxDegree = max(degSeq)
+			if plfit:
+				degSeqGen = PowerlawDegreeSequence(G)
+				nodeDegreeExp = -1 * degSeqGen.getGamma()
+				degSeqGen.run()
+				gen.setDegreeSequence(degSeqGen.getDegreeSequence(n * scale))
+			else:
+				nodeDegreeExp = 2
+				gen.generatePowerlawDegreeSequence(avgDegree, maxDegree, -1 * nodeDegreeExp)
+			print(avgDegree, maxDegree, nodeDegreeExp)
+			# fit power law to community size sequence and generate accordingly
+			#print("fit power law to community size sequence and generate accordingly")
+			communitySize = communities.subsetSizes()
+			communityAvgSize = int(sum(communitySize) / len(communitySize))
+			communityMaxSize = max(communitySize)
+			communityMinSize = min(communitySize)
+			if plfit:
+				communityExp = -1 * PowerlawDegreeSequence(communitySize).getGamma()
+			else:
+				communityExp = 1
+			pl = PowerlawDegreeSequence(communityMinSize, communityMaxSize, -1 * communityExp)
+
+			try: # it can be that the exponent is -1 because the average would be too low otherwise, increase minimum to ensure average fits.
+				pl.setMinimumFromAverageDegree(communityAvgSize)
+				communityMinSize = pl.getMinimumDegree()
+			except RuntimeError: # if average is too low with chosen exponent, this might not work...
+				pl.run()
+				print("Could not set desired average community size {}, average will be {} instead".format(communityAvgSize, pl.getExpectedAverageDegree()))
+
+			gen.generatePowerlawCommunitySizeSequence(minCommunitySize=communityMinSize, maxCommunitySize=communityMaxSize, communitySizeExp=-1 * communityExp)
+			# mixing parameter
+			#print("mixing parameter")
+			localCoverage = LocalPartitionCoverage(G, communities).run().scores()
+			mu = sum(localCoverage) / len(localCoverage)
+			gen.setMu(mu)
+			refImplParams = "-N {0} -k {1} -maxk {2} -mu {3} -minc {4} -maxc {5} -t1 {6} -t2 {7}".format(n * scale, avgDegree, maxDegree, mu, communityMinSize, communityMaxSize, nodeDegreeExp, communityExp)
+			cls.params["refImplParams"] = refImplParams
+			print(refImplParams)
+		else:
+			if scale > 1:
+				# scale communities
+				cData = communities.getVector()
+				cDataCopy = cData[:]
+				b = communities.upperBound()
+				for s in range(1, scale):
+					cDataExtend = [i + (b * s) for i in cDataCopy]
+					cData = cData + cDataExtend
+				assert (len(cData) == n * scale)
+				gen.setPartition(Partition(0, cData))
+			else:
+				gen.setPartition(communities)
+			# degree sequence
+			gen.setDegreeSequence(degSeq * scale)
+			# mixing parameter
+			localCoverage = LocalPartitionCoverage(G, communities).run().scores()
+			gen.setMu([1.0 - x for x in localCoverage] * scale)
 		return gen
 
 
@@ -4093,7 +4265,7 @@ cdef class PLM(CommunityDetector):
 			use recursive coarsening, see http://journals.aps.org/pre/abstract/10.1103/PhysRevE.89.049902 for some explanations (default: true)
 	"""
 
-	def __cinit__(self, Graph G not None, refine=False, gamma=1.0, par="balanced", maxIter=32, turbo=False, recurse=True):
+	def __cinit__(self, Graph G not None, refine=False, gamma=1.0, par="balanced", maxIter=32, turbo=True, recurse=True):
 		self._G = G
 		self._this = new _PLM(G._this, refine, gamma, stdstring(par), maxIter, turbo, recurse)
 
@@ -5018,75 +5190,201 @@ cdef class Eccentricity:
 
 
 cdef extern from "cpp/distance/EffectiveDiameter.h" namespace "NetworKit::EffectiveDiameter":
-	double effectiveDiameter (_Graph G, double ratio, count k, count r) nogil except +
-	double effectiveDiameterExact(_Graph G, double ratio) nogil except +
-	map[count, double] hopPlot(_Graph G, count maxDistance, count k, count r) except +
+	cdef cppclass _EffectiveDiameter "NetworKit::EffectiveDiameter"(_Algorithm):
+		_EffectiveDiameter(_Graph& G, double ratio) except +
+		void run() nogil except +
+		double getEffectiveDiameter() except +
 
-cdef class EffectiveDiameter:
+cdef class EffectiveDiameter(Algorithm):
+	"""
+	Calculates the effective diameter of a graph.
+	The effective diameter is defined as the number of edges on average to reach a given ratio of all other nodes.
 
-	@staticmethod
-	def effectiveDiameter(Graph G, double ratio=0.9, count k=64, count r=7):
-		""" Estimates the number of edges on average needed to reach 90% of all other nodes with a variaton of the ANF algorithm presented in the paper A Fast and Scalable Tool for Data Mining
-			in Massive Graphs by Palmer, Gibbons and Faloutsos
-		Parameters
-		----------
-		G : Graph
-			The graph.
-		ratio : double
-			The percentage of nodes that shall be within stepwith
-		k : count
-			number of parallel approximations, bigger k -> longer runtime, more precise result
-		r : count
-			number of additional bits, important in tiny graphs
-		Returns
-		-------
-		double
-			the estimated effective diameter
+	Parameters
+	----------
+	G : Graph
+		The graph.
+	ratio : double
+		The percentage of nodes that shall be within stepwidth; default = 0.9
+	"""
+	cdef Graph _G
+
+	def __cinit__(self, Graph G not None, double ratio=0.9):
+		self._G = G
+		self._this = new _EffectiveDiameter(G._this, ratio)
+
+	def getEffectiveDiameter(self):
 		"""
-		cdef double diam
-		with nogil:
-			diam = effectiveDiameter(G._this, ratio, k, r)
-		return diam
-
-	@staticmethod
-	def effectiveDiameterExact(Graph G, double ratio=0.9):
-		""" Calculates the number of edges on average needed to reach 90% of all other nodes
-		Parameters
-		----------
-		G : Graph
-			The graph.
-		ratio : double
-			The percentage of nodes that shall be within stepwith
 		Returns
 		-------
 		double
 			the effective diameter
 		"""
-		cdef double diam
-		with nogil:
-			diam = effectiveDiameterExact(G._this, ratio)
-		return diam
+		return (<_EffectiveDiameter*>(self._this)).getEffectiveDiameter()
 
-	@staticmethod
-	def hopPlot(Graph G, maxDistance=0, k=64, r=7):
-		""" Calculates the number of connected nodes for each distance between 0 and the diameter of the graph
-		Parameters
-		----------
-		G : Graph
-			The graph.
-		maxDistance : double
-			maximum distance between considered nodes
-			set to 0 or negative to get the hop-plot for the entire graph so that each node can reach each other node
-		k : count
-			number of parallel approximations, bigger k -> longer runtime, more precise result
-		r : count
-			number of additional bits, important in tiny graphs
+
+cdef extern from "cpp/distance/ApproxEffectiveDiameter.h" namespace "NetworKit::ApproxEffectiveDiameter":
+	cdef cppclass _ApproxEffectiveDiameter "NetworKit::ApproxEffectiveDiameter"(_Algorithm):
+		_ApproxEffectiveDiameter(_Graph& G, double ratio, count k, count r) except +
+		void run() nogil except +
+		double getEffectiveDiameter() except +
+
+cdef class ApproxEffectiveDiameter(Algorithm):
+	"""
+	Calculates the effective diameter of a graph.
+	The effective diameter is defined as the number of edges on average to reach a given ratio of all other nodes.
+
+	Implementation after the ANF algorithm presented in the paper "A Fast and Scalable Tool for Data Mining in Massive Graphs"[1]
+
+	[1] by Palmer, Gibbons and Faloutsos which can be found here: http://www.cs.cmu.edu/~christos/PUBLICATIONS/kdd02-anf.pdf
+
+	Parameters
+	----------
+	G : Graph
+		The graph.
+	ratio : double
+		The percentage of nodes that shall be within stepwidth, default = 0.9
+	k : count
+		number of parallel approximations, bigger k -> longer runtime, more precise result; default = 64
+	r : count
+		number of additional bits, important in tiny graphs; default = 7
+	"""
+	cdef Graph _G
+
+	def __cinit__(self, Graph G not None, double ratio=0.9, count k=64, count r=7):
+		self._G = G
+		self._this = new _ApproxEffectiveDiameter(G._this, ratio, k, r)
+
+	def getEffectiveDiameter(self):
+		"""
+		Returns
+		-------
+		double
+			the approximated effective diameter
+		"""
+		return (<_ApproxEffectiveDiameter*>(self._this)).getEffectiveDiameter()
+
+
+cdef extern from "cpp/distance/ApproxHopPlot.h" namespace "NetworKit::ApproxHopPlot":
+	cdef cppclass _ApproxHopPlot "NetworKit::ApproxHopPlot"(_Algorithm):
+		_ApproxHopPlot(_Graph& G, count maxDistance, count k, count r) except +
+		void run() nogil except +
+		map[count, double] getHopPlot() except +
+
+cdef class ApproxHopPlot(Algorithm):
+	"""
+	Computes an approxmation of the hop-plot of a given graph.
+	The hop-plot is the set of pairs (d, g(g)) for each natural number d
+	and where g(d) is the fraction of connected node pairs whose shortest connecting path has length at most d.
+
+	Implementation after the ANF algorithm presented in the paper "A Fast and Scalable Tool for Data Mining in Massive Graphs"[1]
+
+	[1] by Palmer, Gibbons and Faloutsos which can be found here: http://www.cs.cmu.edu/~christos/PUBLICATIONS/kdd02-anf.pdf
+
+	Parameters
+	----------
+	G : Graph
+		The graph.
+	maxDistance : double
+		maximum distance between considered nodes
+		set to 0 or negative to get the hop-plot for the entire graph so that each node can reach each other node
+	k : count
+		number of parallel approximations, bigger k -> longer runtime, more precise result; default = 64
+	r : count
+		number of additional bits, important in tiny graphs; default = 7
+	"""
+	cdef Graph _G
+
+	def __cinit__(self, Graph G not None, count maxDistance=0, count k=64, count r=7):
+		self._G = G
+		self._this = new _ApproxHopPlot(G._this, maxDistance, k, r)
+
+	def getHopPlot(self):
+		"""
 		Returns
 		-------
 		map
 			number of connected nodes for each distance
 		"""
-		return hopPlot(G._this, maxDistance, k, r)
+		cdef map[count, double] hp = (<_ApproxHopPlot*>(self._this)).getHopPlot()
+		result = dict()
+		for elem in hp:
+			result[elem.first] = elem.second
+		return result
+
+
+cdef extern from "cpp/distance/NeighborhoodFunction.h" namespace "NetworKit::NeighborhoodFunction":
+	cdef cppclass _NeighborhoodFunction "NetworKit::NeighborhoodFunction"(_Algorithm):
+		_NeighborhoodFunction(_Graph& G) except +
+		void run() nogil except +
+		vector[count] getNeighborhoodFunction() except +
+
+cdef class NeighborhoodFunction(Algorithm):
+	"""
+	Computes the neighborhood function exactly.
+	The neighborhood function N of a graph G for a given distance t is defined
+	as the number of node pairs (u,v) that can be reached within distance t.
+
+	Parameters
+	----------
+	G : Graph
+		The graph.
+	"""
+	cdef Graph _G
+
+	def __cinit__(self, Graph G not None):
+		self._G = G
+		self._this = new _NeighborhoodFunction(G._this)
+
+	def getNeighborhoodFunction(self):
+		"""
+		Returns
+		-------
+		list
+			the i-th element denotes the number of node pairs that have a distance at most (i+1)
+		"""
+		return (<_NeighborhoodFunction*>(self._this)).getNeighborhoodFunction()
+
+
+cdef extern from "cpp/distance/ApproxNeighborhoodFunction.h" namespace "NetworKit::ApproxNeighborhoodFunction":
+	cdef cppclass _ApproxNeighborhoodFunction "NetworKit::ApproxNeighborhoodFunction"(_Algorithm):
+		_ApproxNeighborhoodFunction(_Graph& G, count k, count r) except +
+		void run() nogil except +
+		vector[count] getNeighborhoodFunction() except +
+
+cdef class ApproxNeighborhoodFunction(Algorithm):
+	"""
+	Computes the neighborhood function exactly.
+	The neighborhood function N of a graph G for a given distance t is defined
+	as the number of node pairs (u,v) that can be reached within distance t.
+
+	Implementation after the ANF algorithm presented in the paper "A Fast and Scalable Tool for Data Mining in Massive Graphs"[1]
+
+	[1] by Palmer, Gibbons and Faloutsos which can be found here: http://www.cs.cmu.edu/~christos/PUBLICATIONS/kdd02-anf.pdf
+
+	Parameters
+	----------
+	G : Graph
+		The graph.
+	k : count
+		number of parallel approximations, bigger k -> longer runtime, more precise result; default = 64
+	r : count
+		number of additional bits, important in tiny graphs; default = 7
+	"""
+	cdef Graph _G
+
+	def __cinit__(self, Graph G not None, count k=64, count r=7):
+		self._G = G
+		self._this = new _ApproxNeighborhoodFunction(G._this, k, r)
+
+	def getNeighborhoodFunction(self):
+		"""
+		Returns
+		-------
+		list
+			the i-th element denotes the number of node pairs that have a distance at most (i+1)
+		"""
+		return (<_ApproxNeighborhoodFunction*>(self._this)).getNeighborhoodFunction()
 
 
 cdef extern from "cpp/correlation/Assortativity.h":
@@ -5173,9 +5471,68 @@ cdef class Centrality(Algorithm):
 			raise RuntimeError("Error, object not properly initialized")
 		return (<_Centrality*>(self._this)).centralization()
 
+cdef extern from "cpp/centrality/TopCloseness.h":
+	cdef cppclass _TopCloseness "NetworKit::TopCloseness":
+		_TopCloseness(_Graph G, count, bool, bool) except +
+		void run() except +
+		node maximum() except +
+		edgeweight maxSum() except +
+		count iterations() except +
+		count operations() except +
+		vector[node] topkNodesList() except +
+		vector[edgeweight] topkScoresList() except +
+
+
+cdef class TopCloseness:
+	"""
+	Finds the top k nodes with highest closeness centrality faster than computing it for all nodes, based on "Computing Top-k Closeness Centrality Faster in Unweighted Graphs", Bergamini et al., ALENEX16.
+	The algorithms is based on two independent heuristics, described in the referenced paper. We recommend to use first_heu = true and second_heu = false for complex networks and first_heu = true and second_heu = true for street networks or networks with large diameters.
+
+	Parameters
+	----------
+	G: An unweighted graph.
+	k: Number of nodes with highest closeness that have to be found. For example, if k = 10, the top 10 nodes with highest closeness will be computed.
+	first_heu: If true, the neighborhood-based lower bound is computed and nodes are sorted according to it. If false, nodes are simply sorted by degree.
+	sec_heu: If true, the BFSbound is re-computed at each iteration. If false, BFScut is used.
+	"""
+	cdef _TopCloseness* _this
+	cdef Graph _G
+
+	def __cinit__(self,  Graph G, k=1, first_heu=True, sec_heu=True):
+		self._G = G
+		self._this = new _TopCloseness(G._this, k, first_heu, sec_heu)
+
+	def __dealloc__(self):
+		del self._this
+
+	def run(self):
+		""" Computes top-k closeness. """
+		self._this.run()
+		return self
+
+	""" Returns a list with the k nodes with highest closeness.
+	Returns
+	-------
+	vector
+		The k nodes with highest closeness.
+	"""
+	def topkNodesList(self):
+		return self._this.topkNodesList()
+
+
+	""" Returns a list with the scores of the k nodes with highest closeness.
+	Returns
+	-------
+	vector
+		The k highest closeness scores.
+	"""
+	def topkScoresList(self):
+		return self._this.topkScoresList()
+
+
 cdef extern from "cpp/centrality/DegreeCentrality.h":
 	cdef cppclass _DegreeCentrality "NetworKit::DegreeCentrality" (_Centrality):
-		_DegreeCentrality(_Graph, bool normalized) except +
+		_DegreeCentrality(_Graph, bool normalized, bool outdeg, bool ignoreSelfLoops) except +
 
 cdef class DegreeCentrality(Centrality):
 	""" Node centrality index which ranks nodes by their degree.
@@ -5194,9 +5551,9 @@ cdef class DegreeCentrality(Centrality):
  		Normalize centrality values in the interval [0,1].
 	"""
 
-	def __cinit__(self, Graph G, bool normalized=False):
+	def __cinit__(self, Graph G, bool normalized=False, bool outDeg = True, bool ignoreSelfLoops=True):
 		self._G = G
-		self._this = new _DegreeCentrality(G._this, normalized)
+		self._this = new _DegreeCentrality(G._this, normalized, outDeg, ignoreSelfLoops)
 
 
 
@@ -5396,19 +5753,29 @@ cdef class ApproxBetweenness2(Centrality):
 
 
 cdef extern from "cpp/centrality/ApproxCloseness.h":
+	enum _ClosenessType "NetworKit::ApproxCloseness::CLOSENESS_TYPE":
+		INBOUND,
+		OUTBOUND,
+		SUM
+
+cdef extern from "cpp/centrality/ApproxCloseness.h":
 	cdef cppclass _ApproxCloseness "NetworKit::ApproxCloseness" (_Centrality):
-		_ApproxCloseness(_Graph, count, bool) except +
+		_ClosenessType type
+		_ApproxCloseness(_Graph, count, float, bool, _ClosenessType type) except +
+		vector[double] getSquareErrorEstimates() except +
+
 
 
 cdef class ApproxCloseness(Centrality):
 	""" Approximation of closeness centrality according to algorithm described in
-  Eppstein, Wang: Fast Approximation of Centrality.
+  Cohen et al., Computing Classic Closeness Centrality, at Scale.
 
-	ApproxCloseness(G, nSamples, normalized=False)
+	ApproxCloseness(G, nSamples, epsilon=0.1, normalized=False, type=OUTBOUND)
 
-	The algorithm approximates the closeness of all nodes, by taking samples
-  uniformly at random and solving the SSSP problem for each. More samples
-  improves the accuracy of the approximation.
+	The algorithm approximates the closeness of all nodes in both directed and undirected graphs using a hybrid estimator.
+	First, it takes nSamples samples. For these sampled nodes, the closeness is computed exactly. The pivot of each of the
+	remaining nodes is the closest sampled node to it. If a node lies very close to its pivot, a sampling approach is used.
+	Otherwise, a pivoting approach is used. Notice that the input graph has to be connected.
 
 	Parameters
 	----------
@@ -5416,13 +5783,33 @@ cdef class ApproxCloseness(Centrality):
 		input graph (undirected)
 	nSamples : count
 		user defined number of samples
+	epsilon : double, optional
+		parameter used for the error guarantee; it is also used to control when to use sampling and when to use pivoting
 	normalized : bool, optional
 		normalize centrality values in interval [0,1]
+	type : _ClosenessType, optional
+		use in- or outbound centrality or the sum of both (see paper) for computing closeness on directed graph. If G is undirected, this can be ignored.
 	"""
 
-	def __cinit__(self, Graph G, nSamples, normalized=False):
+	#cdef _ApproxCloseness _this
+	INBOUND = 0
+	OUTBOUND = 1
+	SUM = 2
+
+	def __cinit__(self, Graph G, nSamples, epsilon=0.1, normalized=False, _ClosenessType type=OUTBOUND):
 		self._G = G
-		self._this = new _ApproxCloseness(G._this, nSamples, normalized)
+		self._this = new _ApproxCloseness(G._this, nSamples, epsilon, normalized, type)
+
+	def getSquareErrorEstimates(self):
+		""" Return a vector containing the square error estimates for all nodes.
+
+		Returns
+		-------
+		vector
+			A vector of doubles.
+		"""
+		return (<_ApproxCloseness*>(self._this)).getSquareErrorEstimates()
+
 
 
 cdef extern from "cpp/centrality/PageRank.h":
@@ -5985,17 +6372,16 @@ cdef class DynamicPubWebGenerator:
 
 cdef extern from "cpp/generators/DynamicHyperbolicGenerator.h":
 	cdef cppclass _DynamicHyperbolicGenerator "NetworKit::DynamicHyperbolicGenerator":
-		_DynamicHyperbolicGenerator(count numNodes, double avgDegree, double gamma, double moveEachStep, double moveDistance) except +
+		_DynamicHyperbolicGenerator(count numNodes, double avgDegree, double gamma, double T, double moveEachStep, double moveDistance) except +
 		vector[_GraphEvent] generate(count nSteps) except +
 		_Graph getGraph() except +
 		vector[Point[float]] getCoordinates() except +
-		vector[Point[float]] getHyperbolicCoordinates() except +
 
 
 cdef class DynamicHyperbolicGenerator:
 	cdef _DynamicHyperbolicGenerator* _this
 
-	def __cinit__(self, numNodes, avgDegree, gamma, moveEachStep, moveDistance):
+	def __cinit__(self, numNodes, avgDegree = 6, gamma = 3, T = 0, moveEachStep = 1, moveDistance = 0.1):
 		""" Dynamic graph generator according to the hyperbolic unit disk model.
 
 		Parameters
@@ -6006,6 +6392,7 @@ cdef class DynamicHyperbolicGenerator:
 			average degree of the resulting graph
 		gamma : double
 			power-law exponent of the resulting graph
+		T : double
 			temperature, selecting a graph family on the continuum between hyperbolic unit disk graphs and Erdos-Renyi graphs
 		moveFraction : double
 			fraction of nodes to be moved in each time step. The nodes are chosen randomly each step
@@ -6014,7 +6401,7 @@ cdef class DynamicHyperbolicGenerator:
 		"""
 		if gamma <= 2:
 				raise ValueError("Exponent of power-law degree distribution must be > 2")
-		self._this = new _DynamicHyperbolicGenerator(numNodes, avgDegree = 6, gamma = 3, moveEachStep = 1, moveDistance = 0.1)
+		self._this = new _DynamicHyperbolicGenerator(numNodes, avgDegree = 6, gamma = 3, T = 0, moveEachStep = 1, moveDistance = 0.1)
 
 	def generate(self, nSteps):
 		""" Generate event stream.
@@ -6032,10 +6419,6 @@ cdef class DynamicHyperbolicGenerator:
 	def getCoordinates(self):
 		""" Get coordinates in the Poincare disk"""
 		return [(p[0], p[1]) for p in self._this.getCoordinates()]
-
-	def getHyperbolicCoordinates(self):
-		""" Get coordinates in the hyperbolic disk"""
-		return [(p[0], p[1]) for p in self._this.getHyperbolicCoordinates()]
 
 
 
@@ -6176,6 +6559,7 @@ cdef class ParallelPartitionCoarsening(GraphCoarsening):
 cdef extern from "cpp/coarsening/MatchingCoarsening.h":
 	cdef cppclass _MatchingCoarsening "NetworKit::MatchingCoarsening"(_GraphCoarsening):
 		_MatchingCoarsening(_Graph, _Matching, bool) except +
+
 
 cdef class MatchingCoarsening(GraphCoarsening):
 	"""Coarsens graph according to a matching.
@@ -6758,7 +7142,7 @@ cdef class VDegreeIndex(LinkPredictor):
 cdef extern from "cpp/linkprediction/AlgebraicDistanceIndex.h":
 	cdef cppclass _AlgebraicDistanceIndex "NetworKit::AlgebraicDistanceIndex"(_LinkPredictor):
 		_AlgebraicDistanceIndex(count numberSystems, count numberIterations, double omega, index norm) except +
-		_AlgebraicDistanceIndex(const _Graph& G, count numberSystems, count numberIterations, double omega, index norm, ) except +
+		_AlgebraicDistanceIndex(const _Graph& G, count numberSystems, count numberIterations, double omega, index norm) except +
 		void preprocess() except +
 		double run(node u, node v) except +
 
@@ -7685,11 +8069,11 @@ cdef class EdgeScoreNormalizer(EdgeScore):
 	def __cinit__(self, Graph G not None, score, bool inverse = False, double lower = 0.0, double upper = 1.0):
 		self._G = G
 		try:
-			self._inScoreDouble = move(<vector[double]?>score)
+			self._inScoreDouble = <vector[double]?>score
 			self._this = new _EdgeScoreNormalizer[double](G._this, self._inScoreDouble, inverse, lower, upper)
 		except TypeError:
 			try:
-				self._inScoreCount = move(<vector[count]?>score)
+				self._inScoreCount = <vector[count]?>score
 				self._this = new _EdgeScoreNormalizer[count](G._this, self._inScoreCount, inverse, lower, upper)
 			except TypeError:
 				raise TypeError("score must be either a vector of integer or float")
@@ -7789,6 +8173,8 @@ cdef class EdgeScoreAsWeight:
 		self._this = new _EdgeScoreAsWeight(G._this, self._score, squared, offset, factor)
 
 	def __dealloc__(self):
+		self._G = None
+		self._score = None
 		del self._this
 
 	def getWeightedGraph(self):
@@ -8276,6 +8662,8 @@ cdef extern from "cpp/matching/Matching.h":
 		count size(_Graph) except +
 		index mate(node) except +
 		edgeweight weight(_Graph) except +
+		_Partition toPartition(_Graph) except +
+		vector[node] getVector() except +
 
 cdef class Matching:
 	""" Implements a graph matching.
@@ -8321,6 +8709,20 @@ cdef class Matching:
 
 	def weight(self, Graph G):
 		return self._this.weight(G._this)
+
+	def toPartition(self, Graph G):
+		return Partition().setThis(self._this.toPartition(G._this))
+
+	def getVector(self):
+		""" Get the vector storing the data
+
+		Returns
+		-------
+		vector
+			Vector indexed by node id to node id of mate or none if unmatched
+		"""
+		return self._this.getVector()
+
 
 
 
@@ -8376,78 +8778,131 @@ def ranked(sample):
 	"""
 		Given a list of numbers, this function computes the rank of each value
 		and returns a list of ranks where result[i] is the rank of
-		the i-th element in sample.
-		Previously used as profiling.stat.ranked.
+		the i-th element in the given sample.
+		Currently used in profiling.stat.
 	"""
-	cdef count n = len(sample)
-	result = []
-	cdef count i
-	for i in range(n):
-		result.append([sample[i], i, -1])
-	result.sort(key=lambda x: x[0])
-	value = result[0][0]
-	cdef double summ = 0
+	cdef vector[pair[double, count]] helper = vector[pair[double, count]](len(sample))
+	cdef vector[double] result = vector[double](len(sample), 0)
+	for i in range(len(sample)):
+		helper[i] = <pair[double, count]?>(sample[i], i)
+	sort(helper.begin(), helper.end())
+	cdef double value = helper[0].first
+	cdef double summ = 0.
 	cdef count length = 0
-	for i in range(n):
-		if value == result[i][0]:
+	for i in range(len(sample)):
+		if value == helper[i].first:
 			summ += (i+1)
 			length += 1
 		else:
 			summ /= length
 			for j in range(length):
-				result[i-j-1][2] = summ
-			value = result[i][0]
-			summ = (i+1)
+				result[helper[i-j-1].second] = summ
+			value = helper[i].first
+			summ = i+1
 			length = 1
 	summ /= length
-	for i in range(length):
-		result[n-i-1][2] = summ
-	result.sort(key=lambda x: x[1])
-	for i in range(n):
-		result[i] = result[i][2]
-	return result
-
-def ranked2(sample):
-	"""
-		Given a list of numbers, this function computes the rank of each value
-		and returns a list of ranks where result[i] is the rank of
-		the i-th element in sample.
-		Currently used as profiling.stat.ranked.
-	"""
-	cdef map[double,vector[index]] buckets
-	cdef vector[double] result = vector[double](len(sample))
-	cdef count size = 0
-	cdef double rank = 0.0
-	cdef index elem = 0
-	cdef count i
-	# sort the numbers into buckets
-	for i in range(len(sample)):
-		buckets[sample[i]].push_back(i)
-	cdef count n_processed = 0
-	# compute the rank for each bucket
-	cdef map[double, vector[index]].iterator it = buckets.begin()
-	while it != buckets.end():
-		size = dereference(it).second.size()
-		rank = (size * (size+1) / 2 + size * n_processed) * 1.0 / size
-		# and write the rank into the result
-		for elem in dereference(it).second:
-			result[elem] = rank
-		n_processed += size
-		preincrement(it)
+	for j in range(length):
+		result[helper[len(sample)-j-1].second] = summ
 	return result
 
 def sort2(sample):
 	"""
 		Sorts a given list of numbers.
-		Currently used in profiling.stat.sorted.
+		Currently used as profiling.stat.sorted.
 	"""
 	cdef vector[double] result = <vector[double]?>sample
 	sort(result.begin(),result.end())
 	return result
 
 
-# simulation
+cdef extern from "cpp/distance/CommuteTimeDistance.h":
+	cdef cppclass _CommuteTimeDistance "NetworKit::CommuteTimeDistance":
+		_CommuteTimeDistance(_Graph G, double tol) except +
+		void run() nogil except +
+		void runApproximation() except +
+		void runParallelApproximation() except +
+		double distance(node, node) except +
+		double runSinglePair(node, node) except +
+		double runSingleSource(node) except +
 
+
+cdef class CommuteTimeDistance:
+	""" Computes the Euclidean Commute Time Distance between each pair of nodes for an undirected unweighted graph.
+
+	CommuteTimeDistance(G)
+
+	Create CommuteTimeDistance for Graph `G`.
+
+	Parameters
+	----------
+	G : Graph
+		The graph.
+	tol: double
+	"""
+	cdef _CommuteTimeDistance* _this
+	cdef Graph _G
+
+	def __cinit__(self,  Graph G, double tol = 0.1):
+		self._G = G
+		self._this = new _CommuteTimeDistance(G._this, tol)
+
+	def __dealloc__(self):
+		del self._this
+
+	def run(self):
+		""" This method computes ECTD exactly. """
+		with nogil:
+			self._this.run()
+		return self
+
+	def runApproximation(self):
+		""" Computes approximation of the ECTD. """
+		return self._this.runApproximation()
+
+	def runParallelApproximation(self):
+		""" Computes approximation (in parallel) of the ECTD. """
+		return self._this.runParallelApproximation()
+
+	def distance(self, u, v):
+		"""  Returns the ECTD between node u and node v.
+
+		u : node
+		v : node
+		"""
+		return self._this.distance(u, v)
+
+	def runSinglePair(self, u, v):
+		"""  Returns the ECTD between node u and node v, without preprocessing.
+
+		u : node
+		v : node
+		"""
+		return self._this.runSinglePair(u, v)
+
+	def runSingleSource(self, u):
+		"""  Returns the sum of the ECTDs from u, without preprocessing.
+
+		u : node
+		"""
+		return self._this.runSingleSource(u)
+
+
+# stats
+
+def gini(values):
+	"""
+	Computes the Gini coefficient for the distribution given as a list of values.
+	"""
+	sorted_list = sorted(values)
+	height, area = 0, 0
+	for value in sorted_list:
+		height += value
+		area += height - value / 2.
+	fair_area = height * len(values) / 2
+	return (fair_area - area) / fair_area
+
+
+# simulation
 cdef extern from "cpp/simulation/EpidemicSimulationSEIR.h":
 	cdef cppclass _EpidemicSimulationSEIR "NetworKit::EpidemicSimulationSEIR" (_Algorithm):
 		_EpidemicSimulationSEIR(_Graph, count, double, count, count, node) except +
@@ -8455,7 +8910,6 @@ cdef extern from "cpp/simulation/EpidemicSimulationSEIR.h":
 
 cdef class EpidemicSimulationSEIR(Algorithm):
 	"""
-
  	Parameters
  	----------
  	G : Graph
@@ -8471,12 +8925,58 @@ cdef class EpidemicSimulationSEIR(Algorithm):
 	zero : node
 		starting node
 	"""
-
 	cdef Graph G
-
 	def __cinit__(self, Graph G, count tMax, double transP=0.5, count eTime=2, count iTime=7, node zero=none):
 		self.G = G
 		self._this = new _EpidemicSimulationSEIR(G._this, tMax, transP, eTime, iTime, zero)
-
 	def getData(self):
 		return pandas.DataFrame((<_EpidemicSimulationSEIR*>(self._this)).getData(), columns=["zero", "time", "state", "count"])
+
+
+
+cdef extern from "cpp/centrality/SpanningEdgeCentrality.h":
+	cdef cppclass _SpanningEdgeCentrality "NetworKit::SpanningEdgeCentrality":
+		_SpanningEdgeCentrality(_Graph G, double tol) except +
+		void run() nogil except +
+		void runApproximation() except +
+		void runParallelApproximation() except +
+		vector[double] scores() except +
+
+cdef class SpanningEdgeCentrality:
+	""" Computes the Spanning Edge centrality for the edges of the graph.
+	Parameters
+	----------
+	G : Graph
+		The graph.
+	tol: double
+		Tolerance used for the approximation
+	"""
+	cdef _SpanningEdgeCentrality* _this
+	cdef Graph _G
+	def __cinit__(self,  Graph G, double tol = 0.1):
+		self._G = G
+		self._this = new _SpanningEdgeCentrality(G._this, tol)
+	def __dealloc__(self):
+		del self._this
+	def run(self):
+		""" This method computes Spanning Edge Centrality exactly. """
+		with nogil:
+			self._this.run()
+		return self
+	def runApproximation(self):
+		""" Computes approximation of the Spanning Edge Centrality. """
+		return self._this.runApproximation()
+
+	def runParallelApproximation(self):
+		""" Computes approximation (in parallel) of the Spanning Edge Centrality. """
+		return self._this.runParallelApproximation()
+
+	def scores(self):
+		""" Get a vector containing the SEC score for each edge in the graph.
+
+		Returns
+		-------
+		vector
+			The SEC scores.
+		"""
+		return self._this.scores()

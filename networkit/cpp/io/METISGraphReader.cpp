@@ -59,6 +59,8 @@ Graph METISGraphReader::read(const std::string& path) {
 				}
 				Aux::Checkers::Enforcer::enforce(adjacencies[i] > 0 && adjacencies[i] <= n);
 				node v = adjacencies[i] - 1; 	// METIS-indices are 1-based
+				// correct edgeCounter for selfloops
+				edgeCounter += (u == v);
 				b.addHalfEdge(u, v);
 			}
 			u++; // next node

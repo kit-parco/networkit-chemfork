@@ -53,6 +53,23 @@ Graph::Graph(count n, bool weighted, bool directed) :
 	name = sstm.str();
 }
 
+Graph::Graph(std::initializer_list<WeightedEdge> edges) : Graph(0, true) {
+  using namespace std;
+
+  /* Number of nodes = highest node index + 1 */
+  for (const auto& edge: edges) {
+    node x = max(edge.u, edge.v);
+    while (numberOfNodes() <= x) {
+      addNode();
+    }
+  }
+
+  /* Now add all of the edges */
+  for (const auto& edge: edges) {
+    addEdge(edge.u, edge.v, edge.weight);
+  }
+}
+
 Graph::Graph(const Graph& G, bool weighted, bool directed) :
 	n(G.n),
 	m(G.m),
@@ -796,7 +813,7 @@ void Graph::setWeight(node u, node v, edgeweight ew) {
 
 	index vi = indexInOutEdgeArray(u, v);
 	if (vi == none) {
-		// edge does not exits, create it, but warn user
+		// edge does not exist, create it, but warn user
 		TRACE("Setting edge weight of a nonexisting edge will create the edge.");
 		addEdge(u, v, ew);
 		return;
@@ -913,6 +930,15 @@ Graph Graph::toUndirected() const {
 	return U;
 }
 
+
+Graph Graph::toUnweighted() const {
+	if (weighted == false) {
+		throw std::runtime_error("this graph is already unweighted");
+	}
+	Graph U(*this, false, directed);
+	return U;
+}
+
 bool Graph::checkConsistency() const {
 	// check for multi-edges
 	std::vector<node> lastSeen(z, none);
@@ -922,7 +948,7 @@ bool Graph::checkConsistency() const {
 		forNeighborsOf(v, [&](node u) {
 			if (lastSeen[u] == v) {
 				noMultiEdges = false;
-				DEBUG("Multiedge found!");
+				DEBUG("Multiedge found between ", u, " and ", v, "!");
 			}
 			lastSeen[u] = v;
 		});
@@ -957,6 +983,31 @@ void Graph::merge(const Graph& G) {
 		}
 	});
 }
+
+
+// SUBGRAPHS
+
+
+Graph Graph::subgraphFromNodes(const std::unordered_set<node>& nodes) const {
+
+	Graph S(upperNodeIdBound(), isWeighted(), isDirected());
+	// delete all nodes that are not in the node set
+	S.forNodes([&](node u) {
+		if (nodes.find(u) == nodes.end()) {
+			S.removeNode(u);
+		}
+	});
+
+	forEdges([&](node u, node v, edgeweight w) {
+		// if both end nodes are in the node set
+		if (nodes.find(u) != nodes.end() && nodes.find(v) != nodes.end()) {
+			S.addEdge(u, v, w);
+		}
+	});
+
+	return S;
+}
+
 
 
 } /* namespace NetworKit */
