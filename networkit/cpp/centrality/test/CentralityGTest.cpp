@@ -11,22 +11,28 @@
 #include "../DynApproxBetweenness.h"
 #include "../ApproxBetweenness.h"
 #include "../ApproxBetweenness2.h"
+#include "../SpanningEdgeCentrality.h"
 #include "../ApproxCloseness.h"
 #include "../EigenvectorCentrality.h"
 #include "../KatzCentrality.h"
 #include "../PageRank.h"
+#include "../KPathCentrality.h"
+#include "../CoreDecomposition.h"
+#include "../LocalClusteringCoefficient.h"
 #include "../../io/METISGraphReader.h"
 #include "../../io/SNAPGraphReader.h"
 #include "../../generators/ErdosRenyiGenerator.h"
 #include "../../auxiliary/Log.h"
-#include "../KPathCentrality.h"
-#include "../CoreDecomposition.h"
-#include "../LocalClusteringCoefficient.h"
 #include "../../structures/Cover.h"
 #include "../PermanenceCentrality.h"
 #include "../../structures/Partition.h"
 #include "../../auxiliary/Timer.h"
 #include "../../generators/ErdosRenyiGenerator.h"
+#include "../../generators/DorogovtsevMendesGenerator.h"
+#include "../TopCloseness.h"
+#include <iostream>
+#include <iomanip>
+
 
 
 namespace NetworKit {
@@ -352,7 +358,7 @@ TEST_F(CentralityGTest, testApproxClosenessCentralityOnToyGraph) {
  /* Graph:
     0    3
      \  / \
-      2    5     7 (isolated node)
+      2    5
      /  \ /
     1    4
  */
@@ -366,11 +372,11 @@ TEST_F(CentralityGTest, testApproxClosenessCentralityOnToyGraph) {
     G.addEdge(3, 5);
     G.addEdge(4, 5);
 
-    ApproxCloseness acc(G, 10000, false);
+    ApproxCloseness acc(G, 6, 0.1, false);
     acc.run();
     std::vector<double> cc = acc.scores();
 
-		double maximum = acc.maximum();
+	double maximum = acc.maximum();
 
     const double tol = 0.2;
     EXPECT_NEAR(0.1, cc[0], tol);
@@ -379,37 +385,21 @@ TEST_F(CentralityGTest, testApproxClosenessCentralityOnToyGraph) {
     EXPECT_NEAR(0.125, cc[3], tol);
     EXPECT_NEAR(0.125, cc[4], tol);
     EXPECT_NEAR(0.1, cc[5], tol);
-		EXPECT_NEAR(0.2, maximum, tol);
+	EXPECT_NEAR(0.2, maximum, tol);
 
-		ApproxCloseness acc2(G, 50, true);
-		acc2.run();
-		std::vector<double> cc2 = acc2.scores();
+	ApproxCloseness acc2(G, 4, 0.1, true);
+	acc2.run();
+	std::vector<double> cc2 = acc2.scores();
 
-		double maximum2 = acc2.maximum();
+	double maximum2 = acc2.maximum();
 
-		EXPECT_NEAR(0.5, cc2[0], tol);
-		EXPECT_NEAR(0.5, cc2[1], tol);
-		EXPECT_NEAR(0.833335, cc2[2], tol);
-		EXPECT_NEAR(0.625, cc2[3], tol);
-		EXPECT_NEAR(0.625, cc2[4], tol);
-		EXPECT_NEAR(0.5, cc2[5], tol);
-		EXPECT_NEAR(0.2, maximum2, tol);
-}
-
-TEST_F(CentralityGTest, testApproxClosenessCentralityOnDisconnectedGraph) {
-	count n = 5;
-	Graph G(n);
-
-	G.addEdge(0, 1);
-	G.addEdge(2, 3);
-
-	ApproxCloseness acc(G, 100, false);
-	acc.run();
-	std::vector<double> cc = acc.scores();
-
-	const double tol = 0.35;
-	EXPECT_NEAR(0, cc[4], tol);
-	EXPECT_NEAR(1.0, cc[1], tol);
+	EXPECT_NEAR(0.5, cc2[0], tol);
+	EXPECT_NEAR(0.5, cc2[1], tol);
+	EXPECT_NEAR(0.833335, cc2[2], tol);
+	EXPECT_NEAR(0.625, cc2[3], tol);
+	EXPECT_NEAR(0.625, cc2[4], tol);
+	EXPECT_NEAR(0.5, cc2[5], tol);
+	EXPECT_NEAR(0.2, maximum2, tol);
 }
 
 TEST_F(CentralityGTest, testEdgeBetweennessCentrality) {
@@ -873,6 +863,56 @@ TEST_F(CentralityGTest, testSimplePermanence) {
 
 	EXPECT_NEAR(-0.19048, perm.getPermanence(u), 0.0005);
 	EXPECT_NEAR(0.167, perm.getPermanence(v), 0.0005);
+}
+
+TEST_F(CentralityGTest, testTopClosenessDirected) {
+    count size = 400;
+    count k = 10;
+    Graph G1 = DorogovtsevMendesGenerator(size).generate();
+    Graph G(G1.upperNodeIdBound(), false, true);
+    G1.forEdges([&](node u, node v){
+        G.addEdge(u, v);
+        G.addEdge(v, u);
+    });
+    INFO("Number of nodes: ", G.upperNodeIdBound(), ", number of edges: ", G.numberOfEdges());
+    Closeness cc(G1, true);
+    cc.run();
+    TopCloseness topcc(G, k, true, true);
+    topcc.run();
+    const edgeweight tol = 1e-7;
+    for (count i = 0; i < k; i++) {
+        EXPECT_NEAR(cc.ranking()[i].second, topcc.topkScoresList()[i], tol);
+    }
+    TopCloseness topcc2(G, k, true, false);
+    topcc2.run();
+    for (count i = 0; i < k; i++) {
+        EXPECT_NEAR(cc.ranking()[i].second, topcc2.topkScoresList()[i], tol);
+    }
+}
+
+TEST_F(CentralityGTest, testTopClosenessUndirected) {
+    count size = 400;
+    count k = 10;
+    Graph G1 = DorogovtsevMendesGenerator(size).generate();
+    Graph G(G1.upperNodeIdBound(), false, false);
+    G1.forEdges([&](node u, node v){
+        G.addEdge(u, v);
+        G.addEdge(v, u);
+    });
+    INFO("Number of nodes: ", G.upperNodeIdBound(), ", number of edges: ", G.numberOfEdges());
+    Closeness cc(G1, true);
+    cc.run();
+    TopCloseness topcc(G, k, true, true);
+    topcc.run();
+    const edgeweight tol = 1e-7;
+    for (count i = 0; i < k; i++) {
+        EXPECT_NEAR(cc.ranking()[i].second, topcc.topkScoresList()[i], tol);
+    }
+    TopCloseness topcc2(G, k, true, false);
+    topcc2.run();
+    for (count i = 0; i < k; i++) {
+        EXPECT_NEAR(cc.ranking()[i].second, topcc2.topkScoresList()[i], tol);
+    }
 }
 
 } /* namespace NetworKit */
