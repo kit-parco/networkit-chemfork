@@ -32,7 +32,7 @@ public:
 	 */
 	virtual Partition getPartition() const;
 
-	static edgeweight fiducciaMattheysesStep(const Graph& G, Partition& input, double maxImbalance, const std::vector<index>& chargedVertices = {}, std::vector<double> nodeWeights = {});
+	static edgeweight fiducciaMattheysesStep(const Graph& G, Partition& input, double maxImbalance, const std::vector<index>& chargedVertices = {}, std::vector<double> nodeWeights = {}, count minGapSize = 2);
 
 protected:
 	static void enforceBalance(const Graph& G, Partition& part, double maxImbalance, const std::vector<index>& chargedVertices, const std::vector<double>& nodeWeights);

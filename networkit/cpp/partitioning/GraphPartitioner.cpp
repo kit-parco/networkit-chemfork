@@ -48,7 +48,7 @@ Partition GraphPartitioner::getPartition() const {
 }
 
 //TODO: the node weights are currently copied, this could be improved. I could use a reference, but then I cannot make it const, since I resize the vector if it is empty. I allow empty nodeWeights for overloading.
-edgeweight GraphPartitioner::fiducciaMattheysesStep(const Graph& g, Partition&  part, double maxImbalance, const std::vector<index> &chargedVertices, std::vector<double> nodeWeights) {
+edgeweight GraphPartitioner::fiducciaMattheysesStep(const Graph& g, Partition&  part, double maxImbalance, const std::vector<index> &chargedVertices, std::vector<double> nodeWeights, count minGapSize) {
 	using std::vector;
 
 	/**
@@ -73,7 +73,7 @@ edgeweight GraphPartitioner::fiducciaMattheysesStep(const Graph& g, Partition&  
 	assert(nodeWeights.size() == n);
 
 	const auto subsetIds = part.getSubsetIds();
-	vector<index> bestTargetPartition(z);
+	vector<index> bestTargetBlock(z);
 	vector<PrioQueue<edgeweight, index> > queues(part.upperBound(),n);
 	vector<edgeweight> gains;
 	vector<pair<index, index> > transfers;
@@ -113,12 +113,6 @@ edgeweight GraphPartitioner::fiducciaMattheysesStep(const Graph& g, Partition&  
 	 */
 	const double optSize = largestNodeWeight <= 1 ? ceil(double(n) / k) : double(sumNodeWeights) / k + largestNodeWeight;
 	const double maxAllowablePartSize = optSize*(1+maxImbalance);
-
-
-	/**
-	 * if the number of nodes is not divisible by the number of partitions, a perfect balance is impossible.
-	 * To avoid an endless loop, compute the theoretical minimum imbalance and adjust the parameter if necessary.
-	 */
 	assert(maxAllowablePartSize >= optSize);
 
 	/**
@@ -128,6 +122,14 @@ edgeweight GraphPartitioner::fiducciaMattheysesStep(const Graph& g, Partition&  
 		charged[c] = true;
 		chargedPart[part[c]] = true;
 	}
+
+	auto moveLegal = [&](index node, index targetBlock){
+		if (part[node] == targetBlock) return false;
+		if (chargedPart[targetBlock] && charged[node]) return false;
+		if (fragmentSizes[targetBlock] + nodeWeights[node] > maxAllowablePartSize) return false;
+		if (node > 0 && node < n - 1 && part[node-1] == part[node+1] && nodeWeights[node] < minGapSize) return false;
+		return true;
+	};
 
 	/**
 	 * fill edge cut table
@@ -143,13 +145,13 @@ edgeweight GraphPartitioner::fiducciaMattheysesStep(const Graph& g, Partition&  
 	/**
 	 * fill priority queues. Since we want to access the nodes with the maximum gain first but have only minQueues available, we use the negative gain as priority.
 	 */
-	g.forNodes([&queues, &part, &bestTargetPartition, &charged, &chargedPart, &chargedVertices, &edgeCuts, &fragmentSizes, &nodeWeights, partZ, k, total](index v){
+	g.forNodes([&](index v){
 		edgeweight maxCut = -total;
 		index idAtMax = partZ;
 		index ownFragment = part[v];
 
 		for (index fragment = 0; fragment < partZ; fragment++) {
-			if (fragment != ownFragment && edgeCuts[v][fragment] > maxCut && (!chargedPart[fragment] || !charged[v])) {//I could check the balance constraint even here. Should I?
+			if (moveLegal(v, fragment) && edgeCuts[v][fragment] > maxCut) {
 				idAtMax = fragment;
 				maxCut = edgeCuts[v][fragment];
 			}
@@ -159,7 +161,7 @@ edgeweight GraphPartitioner::fiducciaMattheysesStep(const Graph& g, Partition&  
 			/**
 			 * usually, this should always be true. Only exception: exactly k charged nodes are given as input, and v is one of them.
 			 */
-			bestTargetPartition[v] = idAtMax;
+			bestTargetBlock[v] = idAtMax;
 			assert(ownFragment < queues.size());
 			if (fragmentSizes[ownFragment] > nodeWeights[v]) {
 				queues[ownFragment].insert(-(maxCut-edgeCuts[v][ownFragment]), v); //negative max gain
@@ -210,7 +212,7 @@ edgeweight GraphPartitioner::fiducciaMattheysesStep(const Graph& g, Partition&  
 			topGain = -topGain;//invert, since the negative gain was used as priority.
 
 			//now get target partition.
-			index targetFragment = bestTargetPartition[topVertex];
+			index targetFragment = bestTargetBlock[topVertex];
 			double storedGain = edgeCuts[topVertex][targetFragment] - edgeCuts[topVertex][partID];
 			assert(abs(storedGain - topGain) < 0.0001);
 			assert(fragmentSizes[partID] > nodeWeights[topVertex]);
@@ -251,7 +253,7 @@ edgeweight GraphPartitioner::fiducciaMattheysesStep(const Graph& g, Partition&  
 			}
 
 			//update edge cuts of neighbours
-			g.forNodes([&g, topVertex, partID, total, targetFragment, &queues, &part, &subsetIds, &moved, &bestTargetPartition, &charged, &chargedPart, &edgeCuts, &fragmentSizes, &nodeWeights, partZ](index w){
+			g.forNodes([&](index w){
 				if (!moved[w]) {
 					//update gain
 					edgeCuts[w][partID] -= g.weight(topVertex, w);
@@ -262,13 +264,13 @@ edgeweight GraphPartitioner::fiducciaMattheysesStep(const Graph& g, Partition&  
 					index ownFragment = part[w];
 
 					for (index fragment = 0; fragment < partZ; fragment++) {
-						if (fragment != ownFragment && edgeCuts[w][fragment] > maxCut && (!chargedPart[fragment] || !charged[w])) {//I could check the balance constraint even here. Should I?
+						if (moveLegal(w, fragment) && edgeCuts[w][fragment] > maxCut) {
 							idAtMax = fragment;
 							maxCut = edgeCuts[w][fragment];
 						}
 					}
 
-					bestTargetPartition[w] = idAtMax;
+					bestTargetBlock[w] = idAtMax;
 
 					//update prioqueue
 					queues[part[w]].remove(w);
