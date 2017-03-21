@@ -14,6 +14,8 @@
 #include "../graph/Graph.h"
 #include "../structures/Partition.h"
 #include "../base/Algorithm.h"
+#include "../components/ParallelConnectedComponents.h"
+
 
 namespace NetworKit {
 
@@ -30,7 +32,10 @@ public:
 	 */
 	virtual Partition getPartition() const;
 
-	static edgeweight fiducciaMattheysesStep(const Graph& G, Partition& input, double maxImbalance, const std::vector<index> chargedVertices = {}, std::vector<double> nodeWeights = {});
+	static edgeweight fiducciaMattheysesStep(const Graph& G, Partition& input, double maxImbalance, const std::vector<index>& chargedVertices = {}, std::vector<double> nodeWeights = {});
+
+protected:
+	static void enforceBalance(const Graph& G, Partition& part, double maxImbalance, const std::vector<index>& chargedVertices, const std::vector<double>& nodeWeights);
 
 	static bool chargesValid(const Partition& part, const std::vector<index>& chargedVertices) {
 		for (node u : chargedVertices) {
@@ -83,7 +88,6 @@ protected:
 	const double maxImbalance;
 	const std::vector<index> chargedNodes;
 	Partition result;
-	Partition previousPartition;
 };
 
 } /* namespace NetworKit */

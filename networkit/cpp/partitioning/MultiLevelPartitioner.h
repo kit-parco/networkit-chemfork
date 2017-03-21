@@ -45,7 +45,6 @@ public:
 	static Partition growRegions(const Graph& g, const std::vector<index>& startingPoints, const std::vector<count>& weights, const Partition& constraint);
 
 protected:
-	static void enforceBalance(const Graph& G, Partition& part, double maxImbalance, const std::vector<index>& chargedVertices, const std::vector<double>& nodeWeights);
 	static Partition partitionRecursively(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const std::vector<index>& chargedVertices, const Partition& previous, const std::vector<double> &nodeWeights);
 	static Partition recursiveBisection(const Graph& g, count k);
 	static void recursiveBisection(const Graph& g, count k, Partition& input, index maskID);
@@ -57,6 +56,7 @@ protected:
 
 	const bool bisectRecursively;
 	const bool noSingles;
+	Partition previousPartition;
 };
 
 } /* namespace NetworKit */
