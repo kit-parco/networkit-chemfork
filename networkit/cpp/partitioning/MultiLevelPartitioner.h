@@ -25,7 +25,7 @@ class MultiLevelPartitioner : public GraphPartitioner {
 	friend class PartitionerGTest;
 
 public:
-	MultiLevelPartitioner(const Graph& G, count numParts = 10, double maxImbalance = 2, bool bisectRecursivelyForInitialPartitioning = false, const std::vector<index>& chargedVertices = {}, bool avoidSurroundedNodes = false, Partition previous = Partition(0));
+	MultiLevelPartitioner(const Graph& G, count numParts = 10, double maxImbalance = 2, bool bisectRecursivelyForInitialPartitioning = false, const std::vector<index>& chargedVertices = {}, count minimumGapSize = 0, Partition previous = Partition(0));
 
 
 	virtual ~MultiLevelPartitioner() = default;
@@ -55,7 +55,6 @@ protected:
 	static std::pair<index, index> getMaximumDistancePair(const Graph& g, const Partition& constraint, const index partition);
 
 	const bool bisectRecursively;
-	const bool noSingles;
 	Partition previousPartition;
 };
 

@@ -20,7 +20,7 @@ using Aux::PrioQueue;
 
 namespace NetworKit {
 
-GraphPartitioner::GraphPartitioner(const Graph& G, count numParts, double maxImbalance, std::vector<index> chargedVertices) : G(G), numParts(numParts), maxImbalance(maxImbalance), chargedNodes(chargedVertices), result(0) {
+GraphPartitioner::GraphPartitioner(const Graph& G, count numParts, double maxImbalance, std::vector<index> chargedVertices, count minGapSize) : G(G), numParts(numParts), maxImbalance(maxImbalance), chargedNodes(chargedVertices), minGapSize(minGapSize), result(0) {
 	if (G.numberOfSelfLoops() > 0) throw std::runtime_error("Graph must not have self-loops.");
 	if (chargedNodes.size() > numParts) throw std::runtime_error("Cannot have more charged nodes than partitions.");
 	std::set<index> chargedVerticesSet(chargedVertices.begin(), chargedVertices.end());

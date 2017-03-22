@@ -22,7 +22,7 @@ namespace NetworKit {
 class GraphPartitioner : public Algorithm {
 public:
 
-	GraphPartitioner(const Graph& G, count numParts, double maxImbalance, std::vector<index> chargedVertices);
+	GraphPartitioner(const Graph& G, count numParts, double maxImbalance, std::vector<index> chargedVertices, count minGapSize);
 
 	virtual void run() = 0;
 
@@ -87,6 +87,7 @@ protected:
 	const count numParts;
 	const double maxImbalance;
 	const std::vector<index> chargedNodes;
+	const count minGapSize;
 	Partition result;
 };
 

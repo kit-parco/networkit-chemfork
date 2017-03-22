@@ -26,7 +26,7 @@ using Aux::PrioQueue;
 
 namespace NetworKit {
 
-MultiLevelPartitioner::MultiLevelPartitioner(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const vector<index>& chargedVertices, bool avoidSingleNodes, Partition previous) : GraphPartitioner(G, numParts, maxImbalance, chargedVertices), bisectRecursively(bisectRecursively), noSingles(avoidSingleNodes) {
+MultiLevelPartitioner::MultiLevelPartitioner(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const vector<index>& chargedVertices, count minGapSize, Partition previous) : GraphPartitioner(G, numParts, maxImbalance, chargedVertices, minGapSize), bisectRecursively(bisectRecursively) {
 	if (bisectRecursively && chargedNodes.size() > 0) throw std::runtime_error("If using charged nodes, use region growing for the initial graph.");
 
 	count n = G.numberOfNodes();
@@ -64,7 +64,7 @@ void MultiLevelPartitioner::run() {
 	fiducciaMattheysesStep(G, result, maxImbalance, chargedNodes, dummyWeights);
 	INFO("Cut after rebalancing and final FM Step: ", result.calculateCutWeight(G));
 
-	if (noSingles) repairSingleNodes(G, result);
+	if (minGapSize > 0) repairSingleNodes(G, result);
 	INFO("Cut after gap repair: ", result.calculateCutWeight(G));
 
 	hasRun = true;
