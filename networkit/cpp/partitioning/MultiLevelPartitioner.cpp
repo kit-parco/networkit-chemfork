@@ -53,7 +53,10 @@ void MultiLevelPartitioner::run() {
 	}
 
 	std::vector<double> dummyWeights(n, 1);
-	result = partitionRecursively(G, numParts, maxImbalance, bisectRecursively, chargedNodes, previousPartition, dummyWeights);
+	result = partitionRecursively(G, numParts, maxImbalance, bisectRecursively, chargedNodes, previousPartition, dummyWeights, minGapSize);
+	if (result.numberOfSubsets() != numParts) {
+		throw std::runtime_error("After recursive partitioning, got " + std::to_string(result.numberOfSubsets()) + " parts instead of " + std::to_string(numParts) + ".");
+	}
 
 	INFO("Cut after recursive Call: ", result.calculateCutWeight(G));
 
@@ -61,7 +64,7 @@ void MultiLevelPartitioner::run() {
 	 * make sure that the partition is balanced. Only necessary if the balance constraint was relaxed during the multi-level-partitioning
 	 */
 	enforceBalance(G, result, maxImbalance, chargedNodes, dummyWeights);
-	fiducciaMattheysesStep(G, result, maxImbalance, chargedNodes, dummyWeights);
+	fiducciaMattheysesStep(G, result, maxImbalance, chargedNodes, dummyWeights, minGapSize);
 	INFO("Cut after rebalancing and final FM Step: ", result.calculateCutWeight(G));
 
 	if (minGapSize > 0) repairSingleNodes(G, result);
@@ -70,7 +73,8 @@ void MultiLevelPartitioner::run() {
 	hasRun = true;
 }
 
-Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numParts, double maxImbalance, bool bisectRecursively, const std::vector<index>& chargedVertices, const Partition& previous, const std::vector<double> &nodeWeights) {
+Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, const count numParts, double maxImbalance, bool bisectRecursively,
+		const std::vector<index>& chargedVertices, const Partition& previous, const std::vector<double> &nodeWeights, const count minGapSize) {
 	const count n = G.numberOfNodes();
 	const count m = G.numberOfEdges();
 	assert(previous.numberOfElements() == n);
@@ -178,7 +182,10 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 	   }
 
 	   // recursive call
-	   Partition coarsePart = partitionRecursively(coarseG, numParts, maxImbalance, bisectRecursively, coarseCharged, coarsePrevious, coarseWeights);
+	   Partition coarsePart = partitionRecursively(coarseG, numParts, maxImbalance, bisectRecursively, coarseCharged, coarsePrevious, coarseWeights, minGapSize);
+		if (coarsePart.numberOfSubsets() != numParts) {
+			throw std::runtime_error("Coarse partition has " + std::to_string(coarsePart.numberOfSubsets()) + " parts instead of " + std::to_string(numParts) + ".");
+		}
 
 	   // interpolation
 	   ClusteringProjector projector;
@@ -200,7 +207,7 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, count numP
 	   // local refinement with Fiduccia-Matheyses
 	   edgeweight gain;
 	   do {
-			gain = fiducciaMattheysesStep(G, finePart, maxImbalance, chargedVertices, nodeWeights);
+			gain = fiducciaMattheysesStep(G, finePart, maxImbalance, chargedVertices, nodeWeights, minGapSize);
 			assert(gain == gain);
 			TRACE("Found gain ", gain, " in FM-step with ", G.numberOfNodes(), " nodes and ", finePart.numberOfSubsets(), " partitions.");
 	   } while (gain > 0);
@@ -231,8 +238,6 @@ edgeweight MultiLevelPartitioner::calculateGain(const Graph& g, const Partition&
 
 	return extDegreeNow - extDegreeAfterMove;
 }
-
-
 
 std::string MultiLevelPartitioner::toString() const {
 	return "TODO";

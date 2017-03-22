@@ -6579,13 +6579,13 @@ cdef class MatchingCoarsening(GraphCoarsening):
 
 cdef extern from "cpp/partitioning/MultiLevelPartitioner.h":
 	cdef cppclass _MultiLevelPartitioner "NetworKit::MultiLevelPartitioner":
-		_MultiLevelPartitioner(_Graph G, count numParts, double imbalance, bool bisectRecursively, vector[index] chargedVertices, bool avoidSurroundedNodes, _Partition previous) except +
+		_MultiLevelPartitioner(_Graph G, count numParts, double imbalance, bool bisectRecursively, vector[index] chargedVertices, count minGapSize, _Partition previous) except +
 
 		void run() except +
 		_Partition getPartition() except +
 
 cdef extern from "cpp/partitioning/MultiLevelPartitioner.h" namespace "NetworKit::MultiLevelPartitioner":
-	edgeweight fiducciaMattheysesStep(_Graph G, _Partition &part, double maxImbalance, vector[index] chargedVertices, vector[double] nodeWeights) except +
+	edgeweight fiducciaMattheysesStep(_Graph G, _Partition &part, double maxImbalance, vector[index] chargedVertices, vector[double] nodeWeights, count minGapSize) except +
 		
 cdef class MultiLevelPartitioner:
 	"""
@@ -6603,14 +6603,14 @@ cdef class MultiLevelPartitioner:
 	"""
 	cdef _MultiLevelPartitioner* _this
 
-	def __cinit__(self, Graph G, count numParts, double imbalance, bool bisectRecursively, vector[index] chargedVertices, bool avoidSurroundedNodes=False, Partition previous = None):
+	def __cinit__(self, Graph G, count numParts, double imbalance, bool bisectRecursively, vector[index] chargedVertices, count minGapSize=0, Partition previous = None):
 		if previous == None:
 			previous = Partition(G.numberOfNodes())
 			previous.allToOnePartition()
-		self._this = new _MultiLevelPartitioner(G._this, numParts, imbalance, bisectRecursively, chargedVertices, avoidSurroundedNodes, previous._this)
+		self._this = new _MultiLevelPartitioner(G._this, numParts, imbalance, bisectRecursively, chargedVertices, minGapSize, previous._this)
 
 	@staticmethod
-	def fiducciaMattheysesStep(Graph G, Partition part, double maxImbalance, vector[index] chargedVertices, vector[double] nodeWeights):
+	def fiducciaMattheysesStep(Graph G, Partition part, double maxImbalance, vector[index] chargedVertices, vector[double] nodeWeights, count minGapSize):
 		"""
 		Performs a Fiduccia-Mattheyses step on the input partition, making local improvements on it. The number of subsets stays the same.
 
@@ -6622,7 +6622,7 @@ cdef class MultiLevelPartitioner:
 
 		"""
 
-		return fiducciaMattheysesStep(G._this, part._this, maxImbalance, chargedVertices, nodeWeights)
+		return fiducciaMattheysesStep(G._this, part._this, maxImbalance, chargedVertices, nodeWeights, minGapSize)
 
 	def run(self):
 		self._this.run()

@@ -128,6 +128,7 @@ edgeweight GraphPartitioner::fiducciaMattheysesStep(const Graph& g, Partition&  
 		if (chargedPart[targetBlock] && charged[node]) return false;
 		if (fragmentSizes[targetBlock] + nodeWeights[node] > maxAllowablePartSize) return false;
 		if (node > 0 && node < n - 1 && part[node-1] == part[node+1] && nodeWeights[node] < minGapSize) return false;
+		//TODO: this is not sufficient to ensure the gap constraint, since a gap that was previously big enough might now fall under the threshold
 		return true;
 	};
 
