@@ -67,9 +67,6 @@ void MultiLevelPartitioner::run() {
 	fiducciaMattheysesStep(G, result, maxImbalance, chargedNodes, dummyWeights, minGapSize);
 	INFO("Cut after rebalancing and final FM Step: ", result.calculateCutWeight(G));
 
-	if (minGapSize > 0) repairSingleNodes(G, result);
-	INFO("Cut after gap repair: ", result.calculateCutWeight(G));
-
 	hasRun = true;
 }
 
