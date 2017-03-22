@@ -37,6 +37,10 @@ GraphPartitioner::GraphPartitioner(const Graph& G, count numParts, double maxImb
 	if (comp.numberOfComponents() > 1) {
 		throw std::runtime_error("Graph is unconnected..");
 	}
+
+	if (minGapSize > 3) {
+		throw std::logic_error("Forbidden gap sizes of > 3 are not yet implemented.");
+	}
 }
 
 
@@ -71,6 +75,10 @@ edgeweight GraphPartitioner::fiducciaMattheysesStep(const Graph& g, Partition&  
 		nodeWeights.resize(n, 1);
 	}
 	assert(nodeWeights.size() == n);
+	if (*std::min_element(nodeWeights.begin(), nodeWeights.end()) < 1) {
+		throw std::runtime_error("Node weights must be at least 1.");
+	}
+
 
 	const auto subsetIds = part.getSubsetIds();
 	vector<index> bestTargetBlock(z);
@@ -123,12 +131,26 @@ edgeweight GraphPartitioner::fiducciaMattheysesStep(const Graph& g, Partition&  
 		chargedPart[part[c]] = true;
 	}
 
-	auto moveLegal = [&](index node, index targetBlock){
+	auto moveLegal = [&](index node, index targetBlock) {
 		if (part[node] == targetBlock) return false;
 		if (chargedPart[targetBlock] && charged[node]) return false;
 		if (fragmentSizes[targetBlock] + nodeWeights[node] > maxAllowablePartSize) return false;
+
+		if (node -2 >= 0 && part[node-2] == targetBlock && part[node-1] != targetBlock && nodeWeights[node-1] < minGapSize) return false;
 		if (node > 0 && node < n - 1 && part[node-1] == part[node+1] && targetBlock != part[node-1] && nodeWeights[node] < minGapSize) return false;
-		//TODO: this is not sufficient to ensure the gap constraint, since a gap that was previously big enough might now fall under the threshold
+		if (node + 2 < n && part[node+2] == targetBlock && part[node+1] != targetBlock && nodeWeights[node+1] < minGapSize) return false;
+
+		if (minGapSize == 3) {
+			bool noGaps = true;
+			if (node - 3 >= 0 && part[node-3] == targetBlock && part[node-2] != targetBlock && nodeWeights[node-2] + nodeWeights[node-1] < minGapSize) noGaps = false;
+			if (node - 2 >= 0 && node + 1 < n && part[node-2] == part[node+1] && targetBlock != part[node+1] && nodeWeights[node] + nodeWeights[node-1] < minGapSize) noGaps = false;
+			if (node - 1 >= 0 && node + 2 < n && part[node-1] == part[node+2] && targetBlock != part[node-1] && nodeWeights[node] + nodeWeights[node+1] < minGapSize) noGaps = false;
+			if (node + 3 < n  && part[node+3] == targetBlock && part[node+2] != targetBlock && nodeWeights[node+2] + nodeWeights[node+1] < minGapSize) noGaps = false;
+			if (!noGaps) {
+				return false;
+			}
+		}
+
 		return true;
 	};
 
