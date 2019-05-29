@@ -154,6 +154,10 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, const coun
 	   coarsener.run();
 	   Graph coarseG = coarsener.getCoarseGraph();
 	   assert(coarseG.numberOfNodes() < G.numberOfNodes());
+	   if (coarseG.numberOfNodes() >= G.numberOfNodes()) {
+			throw std::runtime_error("Graph not smaller after coarsening.");
+	   }
+
 	   std::vector<node> fineToCoarse = coarsener.getFineToCoarseNodeMapping();
 
 	   Partition coarsePrevious(coarseG.numberOfNodes());
@@ -207,7 +211,7 @@ Partition MultiLevelPartitioner::partitionRecursively(const Graph& G, const coun
 			gain = fiducciaMattheysesStep(G, finePart, maxImbalance, chargedVertices, nodeWeights, minGapSize);
 			assert(gain == gain);
 			TRACE("Found gain ", gain, " in FM-step with ", G.numberOfNodes(), " nodes and ", finePart.numberOfSubsets(), " partitions.");
-	   } while (gain > 0);
+	   } while (gain > 1e-10);
 	   assert(gain == 0);
 	   edgeweight postRefinementCut = finePart.calculateCutWeight(G);
 	   assert(postRefinementCut <= preRefinementCut);
